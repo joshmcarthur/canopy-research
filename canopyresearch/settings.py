@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+from django.core.management.utils import get_random_secret_key
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -22,7 +23,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-o#u-634k+%n!8%*f28qr#x58$4z#zcls#&1w)_8y3#))@5x^f1'
+# Secret key handling:
+# 1. Use SECRET_KEY environment variable if set (for production)
+# 2. Otherwise, load from .secret_key file (persists across restarts)
+# 3. If neither exists, generate a new key and save it to .secret_key
+SECRET_KEY_FILE = BASE_DIR / ".secret_key"
+
+if secret_key := os.environ.get("SECRET_KEY"):
+    SECRET_KEY = secret_key
+elif SECRET_KEY_FILE.exists():
+    SECRET_KEY = SECRET_KEY_FILE.read_text().strip()
+else:
+    SECRET_KEY = get_random_secret_key()
+    SECRET_KEY_FILE.write_text(SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get("DEBUG", "False").lower() == "true"

@@ -12,6 +12,10 @@ wheels/
 # Databases
 **/*.sqlite3
 
+# Secret key (auto-generated, do not commit)
+.secret_key
+
+
 # Testing
 .pytest_cache/
 .coverage
