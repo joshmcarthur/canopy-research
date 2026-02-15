@@ -1,0 +1,41 @@
+# Caddyfile template for Django application
+# This configuration serves static files and proxies dynamic requests to Gunicorn
+# Domain is configured via CANOPY_DOMAIN environment variable
+# If CANOPY_DOMAIN is not set, defaults to :8080 (port-based, no SSL)
+# If CANOPY_DOMAIN is set, uses that domain and enables automatic SSL
+
+{
+    # Global options
+    # Enable automatic HTTPS if domain is provided, otherwise disable
+${CANOPY_AUTO_HTTPS}
+}
+
+# Server block - uses CANOPY_DOMAIN env var or defaults to :8080
+${CANOPY_DOMAIN} {
+    # Enable compression
+    encode zstd gzip
+
+    # Serve static files directly (collected by Django's collectstatic)
+    handle_path /static/* {
+        root * /app/staticfiles
+        file_server
+    }
+
+    # Serve media files if you have a media directory
+    # Uncomment and configure if needed:
+    # handle_path /media/* {
+    #     root * /app/media
+    #     file_server
+    # }
+
+    # Proxy all other requests to Gunicorn
+    handle {
+        reverse_proxy localhost:8000 {
+            # Headers for proper proxying
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+}
