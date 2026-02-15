@@ -11,3 +11,13 @@ wheels/
 
 # Databases
 **/*.sqlite3
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Ruff
+.ruff_cache/
