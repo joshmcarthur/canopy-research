@@ -1,0 +1,21 @@
+services:
+  app:
+    # Entrypoint runs migrations/seeds, then executes the command
+    # Pass Django runserver command for development with hot reload
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    ports:
+      - "8000:8000"  # Direct Django port for development
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      # Exclude venv and other build artifacts
+      - /app/.venv
+      - /app/staticfiles
+      - /app/__pycache__
+    environment:
+      - DEBUG=True
+      - CANOPY_DOMAIN=
+      # Set SKIP_SEEDS=false to run seed scripts on startup (defaults to true/skip)
+      - SKIP_SEEDS=${SKIP_SEEDS:-true}
+      # Set SKIP_MIGRATIONS=true to skip migrations
+      - SKIP_MIGRATIONS=${SKIP_MIGRATIONS:-false}
