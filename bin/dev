@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -e
+
+# Start development environment with hot reload
+# Defaults to 'up' if no arguments provided, otherwise passes through the command
+if [ $# -eq 0 ]; then
+    docker compose -f compose.yml -f compose.dev.yml up
+else
+    docker compose -f compose.yml -f compose.dev.yml "$@"
+fi
