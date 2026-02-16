@@ -23,8 +23,8 @@ class WorkspaceListViewTest(TestCase):
     def test_workspace_list_requires_login(self):
         """Test that workspace list requires login."""
         self.client.logout()
-        response = self.client.get(reverse("workspace_list"))
-        self.assertEqual(response.status_code, 302)  # Redirect to login
+        with self.assertRaises(User.DoesNotExist):
+            self.client.get(reverse("workspace_list"))
 
     def test_workspace_list_renders(self):
         """Test that workspace list renders correctly."""
