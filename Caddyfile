@@ -7,7 +7,11 @@
 {
     # Global options
     # Enable automatic HTTPS if domain is provided, otherwise disable
-${CANOPY_AUTO_HTTPS}
+    ${CANOPY_AUTO_HTTPS}
+
+    # Use non-privileged ports for HTTP/HTTPS to match container exposure
+    http_port 8080
+    https_port 8443
 }
 
 # Server block - uses CANOPY_DOMAIN env var or defaults to :8080
