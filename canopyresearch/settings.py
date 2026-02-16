@@ -47,6 +47,8 @@ if os.environ.get("ALLOWED_HOSTS"):
 elif os.environ.get("CANOPY_DOMAIN") and not os.environ.get("CANOPY_DOMAIN").startswith(":"):
     # Auto-configure from CANOPY_DOMAIN if set and not a port
     ALLOWED_HOSTS = [os.environ.get("CANOPY_DOMAIN")]
+else:
+    ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 
 # Application definition
