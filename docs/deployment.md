@@ -26,7 +26,7 @@ When deploying with a domain name, simply set the `CANOPY_DOMAIN` environment va
 
 ```bash
 # Run with domain (automatic SSL enabled)
-docker run -p 80:80 -p 443:443 \
+docker run -p 80:8080 -p 443:8443 \
   -e CANOPY_DOMAIN=example.com \
   -e ALLOWED_HOSTS=example.com \
   canopy-research
