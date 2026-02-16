@@ -1,7 +1,7 @@
 """
 Django management command for populating the database with initial data.
 
-This command runs automatically on container startup if RUN_SEEDS=true.
+This command runs automatically on container startup if SKIP_SEEDS is set to false.
 You can also run it manually: python manage.py seed
 """
 
