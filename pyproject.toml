@@ -1,7 +1,7 @@
 [project]
 name = "canopy-research"
 version = "0.1.0"
-description = "Add your description here"
+description = "Canopy Research is a Django-based application for managing and analyzing research data."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
