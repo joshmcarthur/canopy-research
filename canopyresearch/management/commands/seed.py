@@ -17,7 +17,6 @@ class Command(BaseCommand):
         """Run seed operations."""
         self.stdout.write("Running seed command...")
 
-
         # Example: Create a superuser if it doesn't exist
         # Uncomment and modify as needed:
         # from django.contrib.auth import get_user_model
