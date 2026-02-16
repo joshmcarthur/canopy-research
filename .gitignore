@@ -11,3 +11,19 @@ wheels/
 
 # Databases
 **/*.sqlite3
+
+# Secret key (auto-generated, do not commit)
+.secret_key
+
+# Static files
+staticfiles/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Ruff
+.ruff_cache/

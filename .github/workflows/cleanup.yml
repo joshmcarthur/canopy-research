@@ -1,0 +1,60 @@
+name: Docker Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    name: Cleanup Docker Image
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Extract branch name
+        id: branch
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          # Sanitize branch name for Docker tag (replace / with -)
+          BRANCH_TAG=$(echo "$BRANCH_NAME" | sed 's/\//-/g')
+          echo "branch_tag=$BRANCH_TAG" >> $GITHUB_OUTPUT
+          echo "Branch tag to delete: $BRANCH_TAG"
+
+      - name: Get package version ID
+        id: package
+        run: |
+          PACKAGE_NAME="${{ github.event.repository.name }}"
+          TAG_NAME="${{ steps.branch.outputs.branch_tag }}"
+          
+          # Get all package versions and find the one matching our tag
+          RESPONSE=$(curl -s \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$PACKAGE_NAME/versions")
+          
+          # Extract version ID for the matching tag
+          VERSION_ID=$(echo "$RESPONSE" | jq -r ".[] | select(.metadata.container.tags[] | contains(\"$TAG_NAME\")) | .id" | head -n 1)
+          
+          if [ -z "$VERSION_ID" ] || [ "$VERSION_ID" = "null" ]; then
+            echo "No package version found for tag: $TAG_NAME"
+            echo "skip_delete=true" >> $GITHUB_OUTPUT
+          else
+            echo "version_id=$VERSION_ID" >> $GITHUB_OUTPUT
+            echo "Found version ID: $VERSION_ID for tag: $TAG_NAME"
+          fi
+
+      - name: Delete Docker image tag
+        if: steps.package.outputs.skip_delete != 'true'
+        run: |
+          PACKAGE_NAME="${{ github.event.repository.name }}"
+          VERSION_ID="${{ steps.package.outputs.version_id }}"
+          
+          curl -X DELETE \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$PACKAGE_NAME/versions/$VERSION_ID"
+          
+          echo "Deleted package version $VERSION_ID for tag: ${{ steps.branch.outputs.branch_tag }}"

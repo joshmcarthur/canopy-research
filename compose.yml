@@ -1,0 +1,19 @@
+services:
+  # Production mode: entrypoint runs migrations/seeds, then executes bin/start (Gunicorn + Caddy)
+  # Development override - use: docker compose -f compose.yml -f compose.dev.yml up
+  # Or set COMPOSE_FILE=compose.yml:compose.dev.yml
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # No command = entrypoint defaults to bin/start (production)
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    environment:
+      - CANOPY_DOMAIN=${CANOPY_DOMAIN:-}
+      - DEBUG=${DEBUG:-False}
+      # Set SKIP_SEEDS=false to run seed scripts on startup (defaults to true/skip)
+      - SKIP_SEEDS=${SKIP_SEEDS:-true}
+      # Set SKIP_MIGRATIONS=true to skip migrations
+      - SKIP_MIGRATIONS=${SKIP_MIGRATIONS:-false}
