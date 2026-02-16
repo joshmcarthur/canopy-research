@@ -3,9 +3,18 @@
 {% block title %}Workspaces - Canopy Research{% endblock %}
 
 {% block content %}
-<h2>Your Workspaces</h2>
+<div class="canopy-center">
+    <h2 class="canopy-prompt">What can I help you with?</h2>
+    <form method="post" action="{% url 'workspace_list' %}" style="width: 100%; max-width: 560px;">
+        {% include "canopyresearch/partials/workspace_form_fields.html" %}
+        <sl-button type="submit" variant="primary" size="large" style="margin-top: 1.25rem;">
+            Create workspace
+        </sl-button>
+    </form>
+</div>
 
-<sl-grid columns="repeat(auto-fill, minmax(300px, 1fr))" gap="20px">
+<h3 style="margin-top: 3rem; font-size: 1rem; font-weight: 500; color: var(--sl-color-neutral-600);">Your workspaces</h3>
+<sl-grid columns="repeat(auto-fill, minmax(280px, 1fr))" gap="1rem" style="margin-top: 1rem;">
     {% for workspace in workspaces %}
     <sl-card>
         <div slot="header">
@@ -23,10 +32,8 @@
     </sl-card>
     {% empty %}
     <sl-card>
-        <p>No workspaces yet. <a href="{% url 'workspace_create' %}">Create one</a></p>
+        <p>No workspaces yet. Create one above to get started.</p>
     </sl-card>
     {% endfor %}
 </sl-grid>
-
-<sl-button variant="primary" href="{% url 'workspace_create' %}">Create New Workspace</sl-button>
 {% endblock %}
