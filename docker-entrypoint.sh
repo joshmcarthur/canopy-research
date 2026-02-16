@@ -13,7 +13,7 @@ fi
 # Optional: Run seed command (skip by default)
 if [ "${SKIP_SEEDS:-true}" != "true" ]; then
     echo "Running seed command..."
-    python manage.py seed || true
+    python manage.py seed
     echo "Seed command completed."
 else
     echo "Skipping seeds (SKIP_SEEDS=true or not set)"
