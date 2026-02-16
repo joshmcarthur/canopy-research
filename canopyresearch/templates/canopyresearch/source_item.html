@@ -1,0 +1,27 @@
+<sl-card>
+    <div slot="header">
+        <strong>{{ source.name }}</strong>
+    </div>
+    <p>
+        <sl-badge variant="primary">{{ source.get_provider_type_display }}</sl-badge>
+        {% if source.status == 'healthy' %}
+            <sl-badge variant="success">{{ source.get_status_display }}</sl-badge>
+        {% elif source.status == 'error' %}
+            <sl-badge variant="danger">{{ source.get_status_display }}</sl-badge>
+        {% else %}
+            <sl-badge variant="neutral">{{ source.get_status_display }}</sl-badge>
+        {% endif %}
+    </p>
+    {% if source.last_fetched %}
+        <p><small>Last fetched: {{ source.last_fetched|date:"Y-m-d H:i" }}</small></p>
+    {% endif %}
+    <div slot="footer">
+        <a href="{% url 'source_edit' source.workspace.id source.id %}">
+            <sl-button variant="default" size="small">Edit</sl-button>
+        </a>
+        <form method="post" action="{% url 'source_delete' source.workspace.id source.id %}" style="display: inline;">
+            {% csrf_token %}
+            <sl-button variant="danger" size="small" type="submit">Delete</sl-button>
+        </form>
+    </div>
+</sl-card>

@@ -1,0 +1,32 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}Workspaces - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>Your Workspaces</h2>
+
+<sl-grid columns="repeat(auto-fill, minmax(300px, 1fr))" gap="20px">
+    {% for workspace in workspaces %}
+    <sl-card>
+        <div slot="header">
+            <strong>{{ workspace.name }}</strong>
+        </div>
+        <p>{{ workspace.description|default:"No description" }}</p>
+        <div slot="footer">
+            <sl-badge variant="neutral">{{ workspace.sources.count }} sources</sl-badge>
+            <sl-badge variant="neutral">{{ workspace.documents.count }} documents</sl-badge>
+            <br>
+            <a href="{% url 'workspace_detail' workspace.id %}">
+                <sl-button variant="primary" size="small">View</sl-button>
+            </a>
+        </div>
+    </sl-card>
+    {% empty %}
+    <sl-card>
+        <p>No workspaces yet. <a href="{% url 'workspace_create' %}">Create one</a></p>
+    </sl-card>
+    {% endfor %}
+</sl-grid>
+
+<sl-button variant="primary" href="{% url 'workspace_create' %}">Create New Workspace</sl-button>
+{% endblock %}
