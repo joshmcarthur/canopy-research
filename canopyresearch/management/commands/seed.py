@@ -28,6 +28,17 @@ class Command(BaseCommand):
         #         password="changeme"
         #     )
         #     self.stdout.write(self.style.SUCCESS("Created admin superuser"))
+        from django.contrib.auth import get_user_model
+
+        User = get_user_model()
+        User.objects.get_or_create(
+            username="admin",
+            defaults={
+                "email": "admin@example.com",
+                "is_staff": True,
+                "is_superuser": True,
+            },
+        )
 
         # Example: Load fixtures
         # from django.core.management import call_command
