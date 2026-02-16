@@ -65,6 +65,9 @@ RUN python manage.py collectstatic --noinput || true
 RUN mkdir -p /var/www/html /etc/caddy /usr/share/caddy /var/lib/caddy \
     && chown -R appuser:appuser /app /var/www/html /etc/caddy /usr/share/caddy /var/lib/caddy
 
+# Make entrypoint and bin scripts executable (they're already copied by COPY . .)
+RUN chmod +x /app/docker-entrypoint.sh /app/bin/start
+
 # Switch to non-root user
 USER appuser
 
@@ -78,9 +81,5 @@ EXPOSE 8443
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8080/ || exit 1
 
-# Create entrypoint script to run both Gunicorn and Caddy
-COPY --chown=appuser:appuser docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN chmod +x /app/docker-entrypoint.sh
-
-# Run entrypoint script
+# Run entrypoint script (runs migrations/seeds, then executes command or bin/start)
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
