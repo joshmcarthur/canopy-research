@@ -119,6 +119,58 @@ class PersistDocumentTest(TestCase):
         doc = Document.objects.get(workspace=self.workspace)
         self.assertEqual(doc.sources.count(), 2)
 
+    def test_rejects_empty_url(self):
+        """Persist raises ValueError for empty URL."""
+        data = {
+            "title": "Title",
+            "url": "",
+            "content": "Content",
+            "published_at": timezone.now(),
+        }
+        with self.assertRaises(ValueError) as cm:
+            persist_document(self.workspace, self.source, data)
+        self.assertIn("missing required URL", str(cm.exception))
+        self.assertEqual(Document.objects.filter(workspace=self.workspace).count(), 0)
+
+    def test_rejects_missing_url(self):
+        """Persist raises ValueError for missing URL."""
+        data = {
+            "title": "Title",
+            "content": "Content",
+            "published_at": timezone.now(),
+        }
+        with self.assertRaises(ValueError) as cm:
+            persist_document(self.workspace, self.source, data)
+        self.assertIn("missing required URL", str(cm.exception))
+        self.assertEqual(Document.objects.filter(workspace=self.workspace).count(), 0)
+
+    def test_rejects_whitespace_only_url(self):
+        """Persist raises ValueError for whitespace-only URL."""
+        data = {
+            "title": "Title",
+            "url": "   ",
+            "content": "Content",
+            "published_at": timezone.now(),
+        }
+        with self.assertRaises(ValueError) as cm:
+            persist_document(self.workspace, self.source, data)
+        self.assertIn("missing required URL", str(cm.exception))
+        self.assertEqual(Document.objects.filter(workspace=self.workspace).count(), 0)
+
+    def test_validation_error_includes_external_id(self):
+        """Validation error message includes external_id when available."""
+        data = {
+            "external_id": "ext123",
+            "title": "Title",
+            "url": "",
+            "content": "Content",
+        }
+        with self.assertRaises(ValueError) as cm:
+            persist_document(self.workspace, self.source, data)
+        error_msg = str(cm.exception)
+        self.assertIn("external_id='ext123'", error_msg)
+        self.assertIn("source='Test Source'", error_msg)
+
 
 class MarkSourceErrorTest(TestCase):
     """Test mark_source_error function."""
@@ -177,3 +229,59 @@ class IngestSourceTest(TestCase):
             self.source.refresh_from_db()
             self.assertEqual(self.source.status, "error")
             self.assertEqual(self.source.consecutive_failures, 1)
+
+    def test_skips_invalid_documents(self):
+        """Invalid documents (e.g., missing URL) are skipped with warning."""
+        from unittest.mock import Mock
+
+        mock_provider = Mock()
+        mock_provider.fetch.return_value = [
+            {"id": "1", "title": "Valid", "link": "https://example.com/1"},
+            {"id": "2", "title": "Invalid", "link": ""},  # Empty URL
+            {"id": "3", "title": "Valid 2", "link": "https://example.com/3"},
+        ]
+        mock_provider.normalize.side_effect = [
+            {
+                "external_id": "1",
+                "title": "Valid",
+                "url": "https://example.com/1",
+                "content": "Content 1",
+                "published_at": timezone.now(),
+            },
+            {
+                "external_id": "2",
+                "title": "Invalid",
+                "url": "",  # Empty URL should be rejected
+                "content": "Content 2",
+                "published_at": timezone.now(),
+            },
+            {
+                "external_id": "3",
+                "title": "Valid 2",
+                "url": "https://example.com/3",
+                "content": "Content 3",
+                "published_at": timezone.now(),
+            },
+        ]
+
+        # Mock provider class to return our mock_provider when instantiated
+        mock_provider_class = Mock(return_value=mock_provider)
+        with patch("canopyresearch.services.ingestion.get_provider_class") as mock_get:
+            mock_get.return_value = mock_provider_class
+            found, created = ingest_source(self.source)
+
+        # Should find 3 documents but only create 2 (invalid one skipped)
+        self.assertEqual(found, 3)
+        self.assertEqual(created, 2)
+        self.assertEqual(Document.objects.filter(workspace=self.workspace).count(), 2)
+        # Verify valid documents were created
+        self.assertTrue(
+            Document.objects.filter(workspace=self.workspace, url="https://example.com/1").exists()
+        )
+        self.assertTrue(
+            Document.objects.filter(workspace=self.workspace, url="https://example.com/3").exists()
+        )
+        # Verify invalid document was not created
+        self.assertFalse(
+            Document.objects.filter(workspace=self.workspace, external_id="2").exists()
+        )

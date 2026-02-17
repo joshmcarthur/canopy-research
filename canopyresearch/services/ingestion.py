@@ -33,7 +33,18 @@ def persist_document(workspace, source: Source, data: dict) -> bool:
 
     Returns True if a new document was created, False if deduplicated.
     When deduplicating, still creates DocumentSource link if not present.
+
+    Raises ValueError if document is invalid (e.g., missing required fields like URL).
     """
+    # Validate required fields - at minimum, URL must be non-empty
+    url = data.get("url") or ""
+    if not url.strip():
+        external_id = data.get("external_id") or ""
+        raise ValueError(
+            f"Invalid document: missing required URL. "
+            f"external_id={external_id!r}, source={source.name!r}"
+        )
+
     content_hash = compute_hash(data)
     published_at = data.get("published_at")
     if published_at is None:
@@ -45,7 +56,7 @@ def persist_document(workspace, source: Source, data: dict) -> bool:
         defaults={
             "external_id": data.get("external_id") or "",
             "title": data.get("title", ""),
-            "url": data.get("url", ""),
+            "url": url,
             "content": data.get("content", ""),
             "published_at": published_at,
             "metadata": data.get("metadata", {}),
@@ -94,8 +105,17 @@ def ingest_source(source: Source) -> tuple[int, int]:
         documents_created = 0
         for raw in raw_docs:
             normalized = provider.normalize(raw)
-            if persist_document(workspace, source, normalized):
-                documents_created += 1
+            try:
+                if persist_document(workspace, source, normalized):
+                    documents_created += 1
+            except ValueError as e:
+                # Skip invalid documents (e.g., missing required fields) and log
+                logger.warning(
+                    "Skipping invalid document from source %s: %s",
+                    source.name,
+                    e,
+                )
+                continue
 
         log.documents_created = documents_created
         log.finished_at = timezone.now()
