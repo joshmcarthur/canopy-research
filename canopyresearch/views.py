@@ -26,7 +26,7 @@ def workspace_detail(request, workspace_id):
     """Display workspace detail with sources and documents."""
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
     sources = workspace.sources.all()
-    documents = workspace.documents.select_related("source").order_by("-published_at")[:50]
+    documents = workspace.documents.prefetch_related("sources").order_by("-published_at")[:50]
 
     context = {
         "workspace": workspace,
@@ -45,7 +45,7 @@ def workspace_switch(request, workspace_id):
     """
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
     sources = workspace.sources.all()
-    documents = workspace.documents.select_related("source").order_by("-published_at")[:20]
+    documents = workspace.documents.prefetch_related("sources").order_by("-published_at")[:20]
 
     context = {
         "workspace": workspace,
@@ -152,7 +152,7 @@ def source_delete(request, workspace_id, source_id):
 def document_list(request, workspace_id):
     """List documents for a workspace."""
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
-    documents = workspace.documents.select_related("source").order_by("-published_at")
+    documents = workspace.documents.prefetch_related("sources").order_by("-published_at")
 
     context = {
         "workspace": workspace,

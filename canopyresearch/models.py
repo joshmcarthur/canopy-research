@@ -67,10 +67,16 @@ class Source(models.Model):
 
 
 class Document(models.Model):
-    """Represents a normalized document from a source."""
+    """
+    Represents a normalized document at the workspace level.
+
+    Documents are deduplicated by hash within a workspace, allowing the same
+    document (same URL/title) to be associated with multiple sources without
+    creating duplicate document records.
+    """
 
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="documents")
-    source = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="documents")
+    sources = models.ManyToManyField(Source, through="DocumentSource", related_name="documents")
     title = models.CharField(max_length=500)
     url = models.URLField(max_length=2000)
     content = models.TextField()
@@ -85,10 +91,11 @@ class Document(models.Model):
         ordering = ["-published_at"]
         indexes = [
             models.Index(fields=["workspace", "-published_at"]),
-            models.Index(fields=["workspace", "source", "-published_at"]),
             models.Index(fields=["workspace", "hash"]),
         ]
         # Unique constraint: same hash per workspace (if hash is set)
+        # This ensures documents are deduplicated at the workspace level,
+        # regardless of which sources they come from
         constraints = [
             models.UniqueConstraint(
                 fields=["workspace", "hash"],
@@ -107,3 +114,30 @@ class Document(models.Model):
             content_to_hash = f"{self.url}:{self.title}"
             self.hash = hashlib.sha256(content_to_hash.encode()).hexdigest()
         super().save(*args, **kwargs)
+
+
+class DocumentSource(models.Model):
+    """
+    Join model representing the association between a Document and a Source.
+
+    This allows tracking which sources a document came from, and when it was
+    first discovered from each source. The same document can be associated
+    with multiple sources if it appears in multiple feeds.
+    """
+
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="document_sources"
+    )
+    source = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="document_sources")
+    discovered_at = models.DateTimeField(
+        auto_now_add=True
+    )  # When this document was first found from this source
+
+    class Meta:
+        unique_together = [["document", "source"]]
+        indexes = [
+            models.Index(fields=["source", "-discovered_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.document.title} from {self.source.name}"
