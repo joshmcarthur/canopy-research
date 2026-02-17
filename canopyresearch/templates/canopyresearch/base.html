@@ -14,7 +14,7 @@
     {% if user.is_authenticated %}
     <header class="app-header">
         <div class="app-header-start">
-            <a href="/" class="brandmark">Canopy Research</a>
+            <a href="{% url 'workspace_create' %}" class="brandmark">Canopy Research</a>
         </div>
         <div class="app-header-center">
             <sl-dropdown id="workspace-switcher" hoist>
@@ -24,14 +24,14 @@
                 </button>
                 <sl-menu>
                     {% for ws in workspaces %}
-                    <sl-menu-item value="{{ ws.id }}" {% if ws == active_workspace %}checked{% endif %}>
+                    <sl-menu-item value="{{ ws.id }}" data-url="{% url 'workspace_detail' workspace_id=ws.id %}" {% if ws == active_workspace %}checked{% endif %}>
                         {{ ws.name }}
                     </sl-menu-item>
                     {% endfor %}
                     {% if workspaces %}
                     <sl-divider></sl-divider>
                     {% endif %}
-                    <sl-menu-item value="new">
+                    <sl-menu-item value="new" data-url="{% url 'workspace_create' %}">
                         <sl-icon slot="prefix" name="plus-lg"></sl-icon> New workspace
                     </sl-menu-item>
                 </sl-menu>
@@ -68,11 +68,10 @@
                 var menu = switcher.querySelector('sl-menu');
                 if (menu) {
                     menu.addEventListener('sl-select', function(evt) {
-                        var value = evt.detail.item.value;
-                        if (value === 'new') {
-                            window.location.href = '/';
-                        } else if (value) {
-                            window.location.href = '/workspaces/' + value + '/';
+                        var item = evt.detail.item;
+                        var url = item.getAttribute('data-url');
+                        if (url) {
+                            window.location.href = url;
                         }
                     });
                 }

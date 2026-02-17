@@ -22,11 +22,17 @@ class WorkspaceCreateViewTest(TestCase):
         self.client.login(username="testuser", password="testpass")
         self.workspace = Workspace.objects.create(name="Test Workspace", owner=self.user)
 
+    @override_settings(
+        MIDDLEWARE=[
+            m for m in settings.MIDDLEWARE if m != "canopyresearch.middleware.AutoLoginMiddleware"
+        ]
+    )
     def test_workspace_create_requires_login(self):
         """Test that workspace create requires login."""
         self.client.logout()
-        with self.assertRaises(User.DoesNotExist):
-            self.client.get(reverse("workspace_create"))
+        response = self.client.get(reverse("workspace_create"))
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(Workspace.objects.filter(name="New Workspace").exists())
 
     def test_workspace_create_renders(self):
         """Test that workspace create form renders correctly."""
@@ -230,6 +236,43 @@ class SourceCRUDViewTest(TestCase):
         self.assertEqual(len(messages_list), 1)
         self.assertEqual(messages_list[0].tags, "success")
         self.assertIn("New Source", str(messages_list[0]))
+
+    def test_source_create_post_invalid_form_renders_with_errors(self):
+        """Test that non-HTMX POST with invalid form re-renders full-page form with errors."""
+        response = self.client.post(
+            reverse("source_create", args=[self.workspace.id]),
+            {
+                "name": "Test Source",
+                "provider_type": "rss",
+                "config_json": "{invalid json}",  # Invalid JSON should trigger validation error
+                "status": "healthy",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Create Source")
+        # Form errors should be present
+        self.assertContains(response, "form-error", count=None)
+        # Should render full-page form (not redirect)
+        self.assertContains(response, "<html")
+
+    def test_source_create_htmx_post_invalid_form_returns_partial_with_errors(self):
+        """Test that HTMX POST with invalid form returns partial form with errors."""
+        response = self.client.post(
+            reverse("source_create", args=[self.workspace.id]),
+            {
+                "name": "Test Source",
+                "provider_type": "rss",
+                "config_json": "{invalid json}",  # Invalid JSON should trigger validation error
+                "status": "healthy",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Create Source")
+        # Should return partial (not full page)
+        self.assertNotContains(response, "<html")
+        # Form errors should be present
+        self.assertContains(response, "form-error", count=None)
 
     def test_source_edit_shows_success_message(self):
         """Test that source edit shows success message."""
