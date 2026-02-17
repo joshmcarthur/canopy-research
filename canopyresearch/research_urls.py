@@ -8,7 +8,7 @@ from canopyresearch import views
 
 urlpatterns = [
     path("", views.workspace_list, name="workspace_list"),
-    path("workspaces/", views.workspace_list, name="workspace_list"),
+    path("workspaces/", views.workspace_list),
     path("workspaces/create/", views.workspace_create, name="workspace_create"),
     path("workspaces/<int:workspace_id>/", views.workspace_detail, name="workspace_detail"),
     path(
