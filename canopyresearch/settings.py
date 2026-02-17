@@ -54,6 +54,7 @@ else:
 # Application definition
 
 INSTALLED_APPS = [
+    "django_tasks_db",
     "unfold",
     "unfold.contrib.filters",
     "unfold.contrib.forms",
@@ -152,3 +153,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Django Tasks (django-tasks-db) - database-backed background tasks
+TASKS = {
+    "default": {
+        "BACKEND": "django_tasks_db.DatabaseBackend",
+        "QUEUES": ["default"],
+    }
+}
