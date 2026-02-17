@@ -16,8 +16,7 @@ from canopyresearch.models import Source, Workspace
 def workspace_list(request):
     """Display list of workspaces for the current user."""
     workspaces = Workspace.objects.filter(owner=request.user).annotate(
-        sources_count=Count('sources'),
-        documents_count=Count('documents')
+        sources_count=Count("sources"), documents_count=Count("documents")
     )
     context = {
         "workspaces": workspaces,
