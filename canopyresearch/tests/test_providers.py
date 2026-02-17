@@ -31,11 +31,17 @@ class BaseSourceProviderTest(TestCase):
             config={"url": "https://example.com/feed.xml"},
         )
 
-    def test_base_provider_not_implemented(self):
-        """Test that BaseSourceProvider raises NotImplementedError."""
+    def test_base_provider_fetch_not_implemented(self):
+        """Test that BaseSourceProvider.fetch raises NotImplementedError."""
         provider = BaseSourceProvider(self.source)
         with self.assertRaises(NotImplementedError):
-            provider.fetch_documents()
+            provider.fetch()
+
+    def test_base_provider_normalize_not_implemented(self):
+        """Test that BaseSourceProvider.normalize raises NotImplementedError."""
+        provider = BaseSourceProvider(self.source)
+        with self.assertRaises(NotImplementedError):
+            provider.normalize({})
 
     def test_provider_initialization(self):
         """Test provider initialization with source."""
@@ -63,12 +69,30 @@ class RSSProviderTest(TestCase):
         self.assertIsInstance(provider, BaseSourceProvider)
         self.assertEqual(provider.source, self.source)
 
-    def test_rss_provider_fetch_documents(self):
-        """Test RSSProvider.fetch_documents returns list."""
+    def test_rss_provider_fetch_returns_list(self):
+        """Test RSSProvider.fetch returns list."""
         provider = RSSProvider(self.source)
-        # Phase 1 stub returns empty list
-        result = provider.fetch_documents()
+        result = provider.fetch()
         self.assertIsInstance(result, list)
+
+    def test_rss_provider_normalize_produces_schema(self):
+        """Test RSSProvider.normalize produces required fields."""
+        provider = RSSProvider(self.source)
+        raw = {
+            "id": "abc123",
+            "title": "Test",
+            "link": "https://example.com",
+            "summary": "Content",
+        }
+        out = provider.normalize(raw)
+        self.assertIn("external_id", out)
+        self.assertIn("title", out)
+        self.assertIn("url", out)
+        self.assertIn("content", out)
+        self.assertIn("published_at", out)
+        self.assertIn("metadata", out)
+        self.assertEqual(out["title"], "Test")
+        self.assertEqual(out["url"], "https://example.com")
 
 
 class HackerNewsProviderTest(TestCase):
@@ -90,11 +114,19 @@ class HackerNewsProviderTest(TestCase):
         provider = HackerNewsProvider(self.source)
         self.assertIsInstance(provider, BaseSourceProvider)
 
-    def test_hackernews_provider_fetch_documents(self):
-        """Test HackerNewsProvider.fetch_documents returns list."""
+    def test_hackernews_provider_fetch_returns_list(self):
+        """Test HackerNewsProvider.fetch returns list."""
         provider = HackerNewsProvider(self.source)
-        result = provider.fetch_documents()
+        result = provider.fetch()
         self.assertIsInstance(result, list)
+
+    def test_hackernews_provider_normalize_produces_schema(self):
+        """Test HackerNewsProvider.normalize produces required fields."""
+        provider = HackerNewsProvider(self.source)
+        raw = {"id": 12345, "title": "HN Post", "url": "https://example.com", "by": "user"}
+        out = provider.normalize(raw)
+        self.assertEqual(out["external_id"], "12345")
+        self.assertEqual(out["title"], "HN Post")
 
 
 class SubredditProviderTest(TestCase):
@@ -116,10 +148,10 @@ class SubredditProviderTest(TestCase):
         provider = SubredditProvider(self.source)
         self.assertIsInstance(provider, BaseSourceProvider)
 
-    def test_subreddit_provider_fetch_documents(self):
-        """Test SubredditProvider.fetch_documents returns list."""
+    def test_subreddit_provider_fetch_returns_list(self):
+        """Test SubredditProvider.fetch returns list."""
         provider = SubredditProvider(self.source)
-        result = provider.fetch_documents()
+        result = provider.fetch()
         self.assertIsInstance(result, list)
 
 
