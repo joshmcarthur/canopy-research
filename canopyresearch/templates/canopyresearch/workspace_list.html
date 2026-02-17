@@ -3,15 +3,7 @@
 {% block title %}Workspaces - Canopy Research{% endblock %}
 
 {% block content %}
-<div class="canopy-center">
-    <h2 class="canopy-prompt">What can I help you with?</h2>
-    <form method="post" action="{% url 'workspace_create' %}" style="width: 100%; max-width: 560px;">
-        {% include "canopyresearch/partials/workspace_form_fields.html" %}
-        <sl-button type="submit" variant="primary" size="large" style="margin-top: 1.25rem;">
-            Create workspace
-        </sl-button>
-    </form>
-</div>
+<h2>Your Workspaces</h2>
 
 <sl-grid columns="repeat(auto-fill, minmax(300px, 1fr))" gap="20px">
     {% for workspace in workspaces %}
