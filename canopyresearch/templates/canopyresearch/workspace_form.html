@@ -1,0 +1,37 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}Create Workspace - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>Create Workspace</h2>
+
+<sl-card>
+    <form method="post">
+        {% csrf_token %}
+        <sl-input
+            label="Name"
+            name="name"
+            value="{{ form.name.value|default:'' }}"
+            required
+        ></sl-input>
+        {% if form.name.errors %}
+            <div style="color: red;">{{ form.name.errors }}</div>
+        {% endif %}
+
+        <sl-textarea
+            label="Description"
+            name="description"
+            rows="3"
+            style="margin-top: 10px;"
+        >{{ form.description.value|default:'' }}</sl-textarea>
+        {% if form.description.errors %}
+            <div style="color: red;">{{ form.description.errors }}</div>
+        {% endif %}
+
+        <sl-button type="submit" variant="primary" style="margin-top: 20px;">Create</sl-button>
+        <a href="{% url 'workspace_list' %}">
+            <sl-button variant="default">Cancel</sl-button>
+        </a>
+    </form>
+</sl-card>
+{% endblock %}

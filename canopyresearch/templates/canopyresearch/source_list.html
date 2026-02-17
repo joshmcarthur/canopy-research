@@ -1,0 +1,47 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}Sources - {{ workspace.name }} - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>Sources for {{ workspace.name }}</h2>
+
+<a href="{% url 'source_create' workspace.id %}">
+    <sl-button variant="primary" size="small">Add Source</sl-button>
+</a>
+
+<sl-grid columns="repeat(auto-fill, minmax(300px, 1fr))" gap="20px" style="margin-top: 20px;">
+    {% for source in sources %}
+    <sl-card>
+        <div slot="header">
+            <strong>{{ source.name }}</strong>
+        </div>
+        <p>
+            <sl-badge variant="primary">{{ source.get_provider_type_display }}</sl-badge>
+            {% if source.status == 'healthy' %}
+                <sl-badge variant="success">{{ source.get_status_display }}</sl-badge>
+            {% elif source.status == 'error' %}
+                <sl-badge variant="danger">{{ source.get_status_display }}</sl-badge>
+            {% else %}
+                <sl-badge variant="neutral">{{ source.get_status_display }}</sl-badge>
+            {% endif %}
+        </p>
+        {% if source.last_fetched %}
+            <p><small>Last fetched: {{ source.last_fetched|date:"Y-m-d H:i" }}</small></p>
+        {% endif %}
+        <div slot="footer">
+            <a href="{% url 'source_edit' workspace.id source.id %}">
+                <sl-button variant="default" size="small">Edit</sl-button>
+            </a>
+            <form method="post" action="{% url 'source_delete' workspace.id source.id %}" style="display: inline;">
+                {% csrf_token %}
+                <sl-button variant="danger" size="small" type="submit">Delete</sl-button>
+            </form>
+        </div>
+    </sl-card>
+    {% empty %}
+    <sl-card>
+        <p>No sources yet. <a href="{% url 'source_create' workspace.id %}">Add one</a></p>
+    </sl-card>
+    {% endfor %}
+</sl-grid>
+{% endblock %}

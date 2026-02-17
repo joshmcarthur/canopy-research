@@ -1,0 +1,83 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}{{ workspace.name }} - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>{{ workspace.name }}</h2>
+<p>{{ workspace.description|default:"No description" }}</p>
+
+<sl-tab-group>
+    <sl-tab slot="nav" panel="sources">Sources</sl-tab>
+    <sl-tab slot="nav" panel="documents">Documents</sl-tab>
+
+    <sl-tab-panel name="sources">
+        <h3>Sources</h3>
+        <a href="{% url 'source_create' workspace.id %}">
+            <sl-button variant="primary" size="small">Add Source</sl-button>
+        </a>
+
+        <sl-grid columns="repeat(auto-fill, minmax(300px, 1fr))" gap="20px" style="margin-top: 20px;">
+            {% for source in sources %}
+            <sl-card>
+                <div slot="header">
+                    <strong>{{ source.name }}</strong>
+                </div>
+                <p>
+                    <sl-badge variant="primary">{{ source.get_provider_type_display }}</sl-badge>
+                    {% if source.status == 'healthy' %}
+                        <sl-badge variant="success">{{ source.get_status_display }}</sl-badge>
+                    {% elif source.status == 'error' %}
+                        <sl-badge variant="danger">{{ source.get_status_display }}</sl-badge>
+                    {% else %}
+                        <sl-badge variant="neutral">{{ source.get_status_display }}</sl-badge>
+                    {% endif %}
+                </p>
+                {% if source.last_fetched %}
+                    <p><small>Last fetched: {{ source.last_fetched|date:"Y-m-d H:i" }}</small></p>
+                {% endif %}
+                <div slot="footer">
+                    <a href="{% url 'source_edit' workspace.id source.id %}">
+                        <sl-button variant="default" size="small">Edit</sl-button>
+                    </a>
+                    <form method="post" action="{% url 'source_delete' workspace.id source.id %}" style="display: inline;">
+                        {% csrf_token %}
+                        <sl-button variant="danger" size="small" type="submit">Delete</sl-button>
+                    </form>
+                </div>
+            </sl-card>
+            {% empty %}
+            <sl-card>
+                <p>No sources yet. <a href="{% url 'source_create' workspace.id %}">Add one</a></p>
+            </sl-card>
+            {% endfor %}
+        </sl-grid>
+    </sl-tab-panel>
+
+    <sl-tab-panel name="documents">
+        <h3>Documents</h3>
+        <a href="{% url 'document_list' workspace.id %}">
+            <sl-button variant="default" size="small">View All Documents</sl-button>
+        </a>
+
+        <div style="margin-top: 20px;">
+            {% for document in documents %}
+            <sl-card style="margin-bottom: 10px;">
+                <div slot="header">
+                    <strong><a href="{{ document.url }}" target="_blank" rel="noopener noreferrer">{{ document.title }}</a></strong>
+                </div>
+                <p>
+                    {% for source in document.sources.all %}
+                        <sl-badge variant="neutral">{{ source.name }}</sl-badge>
+                    {% endfor %}
+                    <small>{{ document.published_at|date:"Y-m-d H:i" }}</small>
+                </p>
+            </sl-card>
+            {% empty %}
+            <sl-card>
+                <p>No documents yet. Documents will appear here after sources are fetched.</p>
+            </sl-card>
+            {% endfor %}
+        </div>
+    </sl-tab-panel>
+</sl-tab-group>
+{% endblock %}
