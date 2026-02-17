@@ -15,6 +15,8 @@ dev = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
     "pytest-django>=4.12.0",
+    "pytest-playwright>=0.4.4",
+    "playwright>=1.48.0",
     "ruff>=0.15.1",
 ]
 
@@ -68,3 +70,7 @@ addopts = [
     "--cov-report=html",
 ]
 testpaths = ["canopyresearch"]
+markers = [
+    "browser: marks tests as browser tests (deselect with '-m \"not browser\"')",
+    "django_db: marks tests as requiring database access",
+]
