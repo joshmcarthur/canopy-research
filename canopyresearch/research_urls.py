@@ -45,4 +45,9 @@ urlpatterns = [
         views.document_list,
         name="document_list",
     ),
+    path(
+        "workspaces/<int:workspace_id>/ingest/",
+        views.workspace_ingest,
+        name="workspace_ingest",
+    ),
 ]

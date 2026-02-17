@@ -9,33 +9,33 @@ from django.test import TestCase
 from django.utils import timezone
 
 from canopyresearch.models import Document, Source, Workspace
-from canopyresearch.tasks import fetch_workspace_sources
+from canopyresearch.tasks import task_ingest_workspace
 
 User = get_user_model()
 
 
-class FetchWorkspaceSourcesTest(TestCase):
-    """Test fetch_workspace_sources task."""
+class TaskIngestWorkspaceTest(TestCase):
+    """Test task_ingest_workspace task."""
 
     def setUp(self):
         """Set up test data."""
         self.user = User.objects.create_user(username="testuser", password="testpass")
         self.workspace = Workspace.objects.create(name="Test Workspace", owner=self.user)
 
-    def test_fetch_workspace_sources_nonexistent(self):
-        """Test fetching sources for non-existent workspace."""
-        result = fetch_workspace_sources(99999)
-        self.assertEqual(result["sources_processed"], 0)
-        self.assertEqual(result["errors"], 0)
+    def test_task_ingest_workspace_nonexistent(self):
+        """Test ingesting for non-existent workspace."""
+        result = task_ingest_workspace.enqueue(workspace_id=99999)
+        self.assertEqual(result.return_value["sources_processed"], 0)
+        self.assertEqual(result.return_value["errors"], 0)
 
-    def test_fetch_workspace_sources_no_sources(self):
-        """Test fetching sources when workspace has no sources."""
-        result = fetch_workspace_sources(self.workspace.id)
-        self.assertEqual(result["sources_processed"], 0)
-        self.assertEqual(result["documents_fetched"], 0)
-        self.assertEqual(result["documents_saved"], 0)
+    def test_task_ingest_workspace_no_sources(self):
+        """Test ingesting when workspace has no sources."""
+        result = task_ingest_workspace.enqueue(workspace_id=self.workspace.id)
+        self.assertEqual(result.return_value["sources_processed"], 0)
+        self.assertEqual(result.return_value["documents_fetched"], 0)
+        self.assertEqual(result.return_value["documents_saved"], 0)
 
-    def test_fetch_workspace_sources_only_healthy(self):
+    def test_task_ingest_workspace_only_healthy(self):
         """Test that only healthy sources are processed."""
         Source.objects.create(
             workspace=self.workspace,
@@ -50,21 +50,19 @@ class FetchWorkspaceSourcesTest(TestCase):
             status="paused",
         )
 
-        with patch("canopyresearch.tasks.get_provider_class") as mock_get_provider:
+        with patch("canopyresearch.services.ingestion.get_provider_class") as mock_get:
             mock_provider_class = MagicMock()
             mock_provider = MagicMock()
-            mock_provider.fetch_documents.return_value = []
+            mock_provider.fetch.return_value = []
             mock_provider_class.return_value = mock_provider
-            mock_get_provider.return_value = mock_provider_class
+            mock_get.return_value = mock_provider_class
 
-            result = fetch_workspace_sources(self.workspace.id)
+            result = task_ingest_workspace.enqueue(workspace_id=self.workspace.id)
 
-            # Should only process healthy source
-            self.assertEqual(result["sources_processed"], 1)
-            # Should only be called once (for healthy source)
-            self.assertEqual(mock_get_provider.call_count, 1)
+            self.assertEqual(result.return_value["sources_processed"], 1)
+            self.assertEqual(mock_get.call_count, 1)
 
-    def test_fetch_workspace_sources_saves_documents(self):
+    def test_task_ingest_workspace_saves_documents(self):
         """Test that fetched documents are saved."""
         Source.objects.create(
             workspace=self.workspace,
@@ -73,77 +71,77 @@ class FetchWorkspaceSourcesTest(TestCase):
             status="healthy",
         )
 
-        test_documents = [
-            {
-                "title": "Test Article",
-                "url": "https://example.com/article",
-                "content": "Test content",
-                "published_at": timezone.now(),
-                "metadata": {},
-            }
-        ]
+        raw_doc = {
+            "title": "Test Article",
+            "link": "https://example.com/article",
+            "summary": "Content",
+        }
+        normalized = {
+            "external_id": None,
+            "title": "Test Article",
+            "url": "https://example.com/article",
+            "content": "Content",
+            "published_at": timezone.now(),
+            "metadata": {},
+        }
 
-        with patch("canopyresearch.tasks.get_provider_class") as mock_get_provider:
+        with patch("canopyresearch.services.ingestion.get_provider_class") as mock_get:
             mock_provider_class = MagicMock()
             mock_provider = MagicMock()
-            mock_provider.fetch_documents.return_value = test_documents
+            mock_provider.fetch.return_value = [raw_doc]
+            mock_provider.normalize.return_value = normalized
             mock_provider_class.return_value = mock_provider
-            mock_get_provider.return_value = mock_provider_class
+            mock_get.return_value = mock_provider_class
 
-            result = fetch_workspace_sources(self.workspace.id)
+            result = task_ingest_workspace.enqueue(workspace_id=self.workspace.id)
 
-            self.assertEqual(result["sources_processed"], 1)
-            self.assertEqual(result["documents_fetched"], 1)
-            self.assertEqual(result["documents_saved"], 1)
-
-            # Verify document was saved
+            self.assertEqual(result.return_value["sources_processed"], 1)
+            self.assertEqual(result.return_value["documents_fetched"], 1)
+            self.assertEqual(result.return_value["documents_saved"], 1)
             self.assertTrue(
                 Document.objects.filter(
                     workspace=self.workspace, url="https://example.com/article"
                 ).exists()
             )
 
-    def test_fetch_workspace_sources_updates_last_fetched(self):
-        """Test that source last_fetched is updated after successful fetch."""
+    def test_task_ingest_workspace_updates_last_fetched(self):
+        """Test that source last_successful_fetch is updated after successful fetch."""
         source = Source.objects.create(
             workspace=self.workspace,
             name="Test Source",
             provider_type="rss",
             status="healthy",
         )
-        initial_last_fetched = source.last_fetched
 
-        with patch("canopyresearch.tasks.get_provider_class") as mock_get_provider:
+        with patch("canopyresearch.services.ingestion.get_provider_class") as mock_get:
             mock_provider_class = MagicMock()
             mock_provider = MagicMock()
-            mock_provider.fetch_documents.return_value = []
+            mock_provider.fetch.return_value = []
             mock_provider_class.return_value = mock_provider
-            mock_get_provider.return_value = mock_provider_class
+            mock_get.return_value = mock_provider_class
 
-            fetch_workspace_sources(self.workspace.id)
+            task_ingest_workspace.enqueue(workspace_id=self.workspace.id)
 
             source.refresh_from_db()
-            self.assertIsNotNone(source.last_fetched)
-            if initial_last_fetched:
-                self.assertGreater(source.last_fetched, initial_last_fetched)
+            self.assertIsNotNone(source.last_successful_fetch)
 
-    def test_fetch_workspace_sources_handles_errors(self):
+    def test_task_ingest_workspace_handles_errors(self):
         """Test that errors are handled gracefully."""
-        source = Source.objects.create(
+        Source.objects.create(
             workspace=self.workspace,
             name="Test Source",
             provider_type="rss",
             status="healthy",
         )
 
-        with patch("canopyresearch.tasks.get_provider_class") as mock_get_provider:
-            mock_get_provider.side_effect = Exception("Provider error")
+        with patch("canopyresearch.services.ingestion.get_provider_class") as mock_get:
+            mock_get.side_effect = Exception("Provider error")
 
-            result = fetch_workspace_sources(self.workspace.id)
+            result = task_ingest_workspace.enqueue(workspace_id=self.workspace.id)
 
-            self.assertEqual(result["sources_processed"], 0)
-            self.assertEqual(result["errors"], 1)
+            self.assertEqual(result.return_value["sources_processed"], 0)
+            self.assertEqual(result.return_value["errors"], 1)
 
-            # Source status should be updated to error
+            source = Source.objects.get(workspace=self.workspace)
             source.refresh_from_db()
             self.assertEqual(source.status, "error")

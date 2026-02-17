@@ -13,6 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from canopyresearch.forms import SourceForm, WorkspaceForm
 from canopyresearch.models import Source, Workspace
+from canopyresearch.tasks import task_ingest_workspace
 
 
 @login_required
@@ -243,6 +244,19 @@ def source_delete(request, workspace_id, source_id):
     if request.headers.get("HX-Request"):
         return render(request, "canopyresearch/partials/source_delete_confirm.html", context)
     return redirect("source_list", workspace_id=workspace.id)
+
+
+@login_required
+@require_http_methods(["POST"])
+def workspace_ingest(request, workspace_id):
+    """Trigger background ingestion for a workspace. Returns HTMX partial."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    task_ingest_workspace.enqueue(workspace_id=workspace.id)
+    context = {"workspace": workspace}
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/ingest_button.html", context)
+    messages.success(request, "Ingestion started.")
+    return redirect("workspace_detail", workspace_id=workspace.id)
 
 
 @login_required

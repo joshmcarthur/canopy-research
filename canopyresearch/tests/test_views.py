@@ -92,6 +92,32 @@ class WorkspaceDetailViewTest(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class WorkspaceIngestViewTest(TestCase):
+    """Test workspace ingest view."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(username="testuser", password="testpass")
+        self.client.login(username="testuser", password="testpass")
+        self.workspace = Workspace.objects.create(name="Test Workspace", owner=self.user)
+
+    def test_workspace_ingest_post_triggers_task(self):
+        """Test that POST triggers ingestion task."""
+        response = self.client.post(
+            reverse("workspace_ingest", args=[self.workspace.id]),
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ingesting")
+
+    def test_workspace_ingest_requires_ownership(self):
+        """Test that ingest requires workspace ownership."""
+        other_user = User.objects.create_user(username="otheruser", password="testpass")
+        other_workspace = Workspace.objects.create(name="Other", owner=other_user)
+        response = self.client.post(reverse("workspace_ingest", args=[other_workspace.id]))
+        self.assertEqual(response.status_code, 404)
+
+
 class WorkspaceSwitchViewTest(TestCase):
     """Test workspace switch HTMX view."""
 
