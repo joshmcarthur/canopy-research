@@ -28,7 +28,11 @@ def task_ingest_workspace(workspace_id: int) -> dict[str, int]:
 @task
 def task_ingest_source(source_id: int) -> tuple[int, int]:
     """Ingest documents from a single source."""
-    source = Source.objects.select_related("workspace").get(pk=source_id)
+    try:
+        source = Source.objects.select_related("workspace").get(pk=source_id)
+    except Source.DoesNotExist:
+        logger.error("Source %s not found", source_id)
+        return (0, 0)
     return ingest_source(source)
 
 
