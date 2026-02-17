@@ -8,7 +8,6 @@ The pipeline owns validation, hashing, deduplication, and persistence.
 import hashlib
 import os
 from datetime import datetime
-from html.parser import HTMLParser
 from typing import Any
 from urllib.parse import urlparse
 
@@ -58,45 +57,52 @@ def extract_article_content(url: str) -> str | None:
         return None
 
 
-class _HTMLLinkExtractor(HTMLParser):
-    """Extract http(s) links from HTML."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.links: list[tuple[str, str]] = []  # (url, link_text)
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag == "a":
-            for name, value in attrs:
-                if name == "href" and value:
-                    url = value.strip()
-                    if url.startswith("http://") or url.startswith("https://"):
-                        self.links.append((url, ""))
-                    break
-
-    def handle_data(self, data: str) -> None:
-        if self.links:
-            url, _ = self.links[-1]
-            self.links[-1] = (url, (self.links[-1][1] + data).strip())
-
-
 def _extract_links_from_html(
     html: str, skip_same_domain: str | None = None
 ) -> list[tuple[str, str]]:
-    """Extract http(s) links from HTML, optionally skipping same-domain links."""
-    parser = _HTMLLinkExtractor()
-    parser.feed(html)
+    """
+    Extract http(s) links from HTML, optionally skipping same-domain links.
+
+    Uses lxml to parse HTML and extract links in a single operation,
+    similar to Nokogiri's doc.all("a").map { |link| [link["href"], link.text] }
+    """
+    if not html or not html.strip():
+        return []
+
+    try:
+        tree = lxml_html.fromstring(html)
+    except (ValueError, TypeError, lxml_html.etree.ParserError):
+        return []
+
     result: list[tuple[str, str]] = []
     seen: set[str] = set()
     base_domain = urlparse(skip_same_domain).netloc if skip_same_domain else None
 
-    for url, link_text in parser.links:
-        if url in seen:
+    # Find all anchor tags with href attributes
+    for anchor in tree.xpath("//a[@href]"):
+        href = anchor.get("href", "").strip()
+        if not href:
             continue
-        if skip_same_domain and base_domain and urlparse(url).netloc == base_domain:
+
+        # Only include http/https URLs
+        if not (href.startswith("http://") or href.startswith("https://")):
             continue
-        seen.add(url)
-        result.append((url, link_text or url))
+
+        # Skip duplicates
+        if href in seen:
+            continue
+
+        # Skip same-domain links if requested
+        if skip_same_domain and base_domain:
+            link_domain = urlparse(href).netloc
+            if link_domain == base_domain:
+                continue
+
+        # Extract link text (all text content within the anchor tag)
+        link_text = anchor.text_content().strip()
+
+        seen.add(href)
+        result.append((href, link_text or href))
 
     return result
 
