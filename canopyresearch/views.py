@@ -16,28 +16,6 @@ from canopyresearch.models import Source, Workspace
 
 
 @login_required
-def workspace_list(request):
-    """Display list of workspaces for the current user."""
-    workspaces = Workspace.objects.filter(owner=request.user)
-
-    if request.method == "POST":
-        form = WorkspaceForm(request.POST)
-        if form.is_valid():
-            workspace = form.save(commit=False)
-            workspace.owner = request.user
-            workspace.save()
-            return redirect("workspace_detail", workspace_id=workspace.id)
-    else:
-        form = WorkspaceForm()
-
-    context = {
-        "workspaces": workspaces,
-        "form": form,
-    }
-    return render(request, "canopyresearch/workspace_list.html", context)
-
-
-@login_required
 def workspace_detail(request, workspace_id):
     """Redirect to workspace sources tab."""
     get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
