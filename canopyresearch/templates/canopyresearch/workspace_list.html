@@ -13,8 +13,8 @@
         </div>
         <p>{{ workspace.description|default:"No description" }}</p>
         <div slot="footer">
-            <sl-badge variant="neutral">{{ workspace.sources.count }} sources</sl-badge>
-            <sl-badge variant="neutral">{{ workspace.documents.count }} documents</sl-badge>
+            <sl-badge variant="neutral">{{ workspace.sources_count }} sources</sl-badge>
+            <sl-badge variant="neutral">{{ workspace.documents_count }} documents</sl-badge>
             <br>
             <a href="{% url 'workspace_detail' workspace.id %}">
                 <sl-button variant="primary" size="small">View</sl-button>

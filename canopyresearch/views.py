@@ -3,6 +3,7 @@ Django views for canopyresearch.
 """
 
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
@@ -14,7 +15,10 @@ from canopyresearch.models import Source, Workspace
 @login_required
 def workspace_list(request):
     """Display list of workspaces for the current user."""
-    workspaces = Workspace.objects.filter(owner=request.user)
+    workspaces = Workspace.objects.filter(owner=request.user).annotate(
+        sources_count=Count('sources'),
+        documents_count=Count('documents')
+    )
     context = {
         "workspaces": workspaces,
     }
