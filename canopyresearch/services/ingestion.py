@@ -35,28 +35,25 @@ def persist_document(workspace, source: Source, data: dict) -> bool:
     When deduplicating, still creates DocumentSource link if not present.
     """
     content_hash = compute_hash(data)
-    existing = Document.objects.filter(workspace=workspace, content_hash=content_hash).first()
-    if existing:
-        DocumentSource.objects.get_or_create(document=existing, source=source)
-        return False
-
     published_at = data.get("published_at")
     if published_at is None:
         published_at = timezone.now()
 
-    doc = Document.objects.create(
+    doc, created = Document.objects.get_or_create(
         workspace=workspace,
-        external_id=data.get("external_id") or "",
-        title=data.get("title", ""),
-        url=data.get("url", ""),
-        content=data.get("content", ""),
-        published_at=published_at,
-        metadata=data.get("metadata", {}),
         content_hash=content_hash,
-        ingested_at=timezone.now(),
+        defaults={
+            "external_id": data.get("external_id") or "",
+            "title": data.get("title", ""),
+            "url": data.get("url", ""),
+            "content": data.get("content", ""),
+            "published_at": published_at,
+            "metadata": data.get("metadata", {}),
+            "ingested_at": timezone.now(),
+        },
     )
     DocumentSource.objects.get_or_create(document=doc, source=source)
-    return True
+    return created
 
 
 def mark_source_error(source: Source, error: Exception) -> None:
