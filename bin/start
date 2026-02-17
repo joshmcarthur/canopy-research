@@ -6,8 +6,10 @@ cleanup() {
     echo "Shutting down..."
     kill -TERM "$GUNICORN_PID" 2>/dev/null || true
     kill -TERM "$CADDY_PID" 2>/dev/null || true
+    kill -TERM "$WORKER_PID" 2>/dev/null || true
     wait "$GUNICORN_PID" 2>/dev/null || true
     wait "$CADDY_PID" 2>/dev/null || true
+    wait "$WORKER_PID" 2>/dev/null || true
     exit 0
 }
 
@@ -63,5 +65,10 @@ echo "Starting Caddy..."
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
 CADDY_PID=$!
 
-# Wait for both processes
-wait $GUNICORN_PID $CADDY_PID
+# Start task worker in the background
+echo "Starting task worker..."
+python manage.py db_worker &
+WORKER_PID=$!
+
+# Wait for all processes
+wait $GUNICORN_PID $CADDY_PID $WORKER_PID
