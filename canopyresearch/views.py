@@ -143,6 +143,9 @@ def source_create(request, workspace_id):
             # Form has errors, re-render modal form
             context = {"workspace": workspace, "form": form}
             return render(request, "canopyresearch/partials/source_create_form.html", context)
+        # Non-HTMX POST with invalid form - re-render full-page form with errors
+        context = {"workspace": workspace, "form": form}
+        return render(request, "canopyresearch/source_form.html", context)
     else:
         form = SourceForm(workspace=workspace)
 
