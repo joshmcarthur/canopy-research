@@ -5,7 +5,7 @@
 {% block content %}
 <div class="canopy-center">
     <h2 class="canopy-prompt">What can I help you with?</h2>
-    <form method="post" action="{% url 'workspace_list' %}" style="width: 100%; max-width: 560px;">
+    <form method="post" action="{% url 'workspace_create' %}" style="width: 100%; max-width: 560px;">
         {% include "canopyresearch/partials/workspace_form_fields.html" %}
         <sl-button type="submit" variant="primary" size="large" style="margin-top: 1.25rem;">
             Create workspace
