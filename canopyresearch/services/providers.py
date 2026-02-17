@@ -316,12 +316,11 @@ class HackerNewsProvider(BaseSourceProvider):
     def normalize(self, raw_doc: dict[str, Any]) -> dict[str, Any]:
         """Convert HN item to normalized schema. Supports both Algolia and Firebase shapes."""
         from datetime import datetime as dt
+        from datetime import timezone as dt_tz
 
         time_val = raw_doc.get("created_at_i") or raw_doc.get("time")
         if time_val is not None:
-            published_at = timezone.make_aware(
-                dt.fromtimestamp(time_val), timezone.get_default_timezone()
-            )
+            published_at = dt.fromtimestamp(time_val, tz=dt_tz.utc)
         else:
             published_at = timezone.now()
 
@@ -451,12 +450,14 @@ class SubredditProvider(BaseSourceProvider):
     def normalize(self, raw_doc: dict[str, Any]) -> dict[str, Any]:
         """Convert Reddit post to normalized schema."""
         from datetime import datetime as dt
+        from datetime import timezone as dt_tz
 
         created = raw_doc.get("created_utc")
         if created is not None:
-            published_at = timezone.make_aware(
-                dt.fromtimestamp(created), timezone.get_default_timezone()
-            )
+            # created_utc is epoch seconds in UTC, so create UTC-aware datetime first
+            published_at = dt.fromtimestamp(created, tz=dt_tz.utc)
+            # Convert to default timezone for consistency with timezone.now()
+            published_at = published_at.astimezone(timezone.get_default_timezone())
         else:
             published_at = timezone.now()
 
