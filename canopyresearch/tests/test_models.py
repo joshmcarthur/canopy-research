@@ -6,7 +6,7 @@ from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from django.test import TestCase
 
-from canopyresearch.models import Document, Source, Workspace
+from canopyresearch.models import Document, DocumentSource, Source, Workspace
 
 User = get_user_model()
 
@@ -131,16 +131,18 @@ class DocumentModelTest(TestCase):
 
         document = Document.objects.create(
             workspace=self.workspace,
-            source=self.source,
             title="Test Document",
             url="https://example.com/article",
             content="Test content",
             published_at=timezone.now(),
         )
+        # Associate document with source
+        DocumentSource.objects.create(document=document, source=self.source)
+
         self.assertEqual(document.title, "Test Document")
         self.assertEqual(document.url, "https://example.com/article")
         self.assertEqual(document.workspace, self.workspace)
-        self.assertEqual(document.source, self.source)
+        self.assertIn(self.source, document.sources.all())
         self.assertIsNotNone(document.hash)
 
     def test_document_hash_generation(self):
@@ -149,37 +151,38 @@ class DocumentModelTest(TestCase):
 
         document = Document.objects.create(
             workspace=self.workspace,
-            source=self.source,
             title="Test Document",
             url="https://example.com/article",
             content="Test content",
             published_at=timezone.now(),
         )
+        # Associate document with source
+        DocumentSource.objects.create(document=document, source=self.source)
+
         self.assertIsNotNone(document.hash)
         self.assertEqual(len(document.hash), 64)  # SHA-256 hex digest length
 
     def test_document_deduplication(self):
-        """Test document deduplication via hash."""
+        """Test document deduplication via hash at workspace level."""
         from django.db import IntegrityError
         from django.utils import timezone
 
         # Create first document
         doc1 = Document.objects.create(
             workspace=self.workspace,
-            source=self.source,
             title="Test Document",
             url="https://example.com/article",
             content="Test content",
             published_at=timezone.now(),
         )
+        DocumentSource.objects.create(document=doc1, source=self.source)
         hash1 = doc1.hash
 
-        # Creating second document with same URL and title should fail due to unique constraint
-        # (when hash is not empty, which it won't be since we generate it)
+        # Creating second document with same URL and title (same hash) should fail
+        # due to unique constraint (workspace, hash) - documents are deduplicated at workspace level
         with self.assertRaises(IntegrityError):
             Document.objects.create(
                 workspace=self.workspace,
-                source=self.source,
                 title="Test Document",
                 url="https://example.com/article",
                 content="Different content",
@@ -190,16 +193,68 @@ class DocumentModelTest(TestCase):
         self.assertIsNotNone(hash1)
         self.assertEqual(len(hash1), 64)  # SHA-256 hex digest length
 
+    def test_document_same_hash_different_sources(self):
+        """Test that same document (same hash) from different sources shares the same document instance."""
+        from django.utils import timezone
+
+        # Create second source in the same workspace
+        source2 = Source.objects.create(
+            workspace=self.workspace,
+            name="Another Source",
+            provider_type="hackernews",
+        )
+
+        # Create first document from first source
+        doc1 = Document.objects.create(
+            workspace=self.workspace,
+            title="Test Document",
+            url="https://example.com/article",
+            content="Test content",
+            published_at=timezone.now(),
+        )
+        DocumentSource.objects.create(document=doc1, source=self.source)
+        hash1 = doc1.hash
+
+        # Try to create same document (same URL/title hash) from different source
+        # Should get the same document instance due to workspace-level deduplication
+        doc2, created = Document.objects.get_or_create(
+            workspace=self.workspace,
+            hash=hash1,
+            defaults={
+                "title": "Test Document",
+                "url": "https://example.com/article",
+                "content": "Test content",
+                "published_at": timezone.now(),
+            },
+        )
+
+        # Should be the same document instance (not created)
+        self.assertFalse(created)
+        self.assertEqual(doc1.id, doc2.id)
+
+        # Associate the document with the second source
+        DocumentSource.objects.get_or_create(document=doc2, source=source2)
+
+        # Document should now be associated with both sources
+        self.assertEqual(doc1.sources.count(), 2)
+        self.assertIn(self.source, doc1.sources.all())
+        self.assertIn(source2, doc1.sources.all())
+
+        # Only one document should exist
+        self.assertEqual(Document.objects.filter(workspace=self.workspace, hash=hash1).count(), 1)
+
     def test_document_str(self):
         """Test document string representation."""
         from django.utils import timezone
 
         document = Document.objects.create(
             workspace=self.workspace,
-            source=self.source,
             title="Test Document",
             url="https://example.com/article",
             content="Test content",
             published_at=timezone.now(),
         )
+        # Associate document with source
+        DocumentSource.objects.create(document=document, source=self.source)
+
         self.assertEqual(str(document), "Test Document")

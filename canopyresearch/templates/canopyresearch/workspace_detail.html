@@ -10,7 +10,7 @@
     {% else %}
         <p class="workspace-description-empty">No description yet</p>
     {% endif %}
-    <sl-button variant="text" size="small" 
+    <sl-button variant="text" size="small"
                hx-get="{% url 'workspace_edit' workspace.id %}"
                hx-target="#dialog-body"
                hx-swap="innerHTML"
@@ -58,11 +58,11 @@
         var path = window.location.pathname;
         var tabNavRight = document.querySelector('.tab-nav-right');
         var addSourceButton = tabNavRight ? tabNavRight.querySelector('sl-button') : null;
-        
+
         document.querySelectorAll('.tab-nav .tab-link').forEach(function(a) {
             var isActive = a.getAttribute('href') && path.indexOf(a.getAttribute('href')) !== -1;
             a.classList.toggle('active', isActive);
-            
+
             // Show/hide Add Source button based on active tab
             if (addSourceButton && isActive) {
                 if (a.textContent.trim() === 'Sources') {
@@ -72,7 +72,7 @@
                 }
             }
         });
-        
+
         // Initial check
         if (addSourceButton) {
             var sourcesTab = document.querySelector('.tab-link[href*="sources"]');

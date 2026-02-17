@@ -2,9 +2,10 @@
 Tests for canopyresearch views.
 """
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from canopyresearch.models import Source, Workspace
@@ -99,6 +100,19 @@ class WorkspaceSwitchViewTest(TestCase):
         self.user = User.objects.create_user(username="testuser", password="testpass")
         self.client.login(username="testuser", password="testpass")
         self.workspace = Workspace.objects.create(name="Test Workspace", owner=self.user)
+
+    @override_settings(
+        MIDDLEWARE=[
+            m for m in settings.MIDDLEWARE if m != "canopyresearch.middleware.AutoLoginMiddleware"
+        ]
+    )
+    def test_workspace_switch_requires_login(self):
+        """Test that workspace switch requires login."""
+        self.client.logout()
+        response = self.client.get(reverse("workspace_switch", args=[self.workspace.id]))
+        # @login_required redirects unauthenticated users to login page
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith("/accounts/login/"))
 
     def test_workspace_switch_renders(self):
         """Test that workspace switch renders partial content."""

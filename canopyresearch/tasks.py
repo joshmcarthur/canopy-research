@@ -5,11 +5,12 @@ These tasks handle periodic operations like fetching documents
 from sources and maintaining workspace data.
 """
 
+import hashlib
 import logging
 
 from django.utils import timezone
 
-from canopyresearch.models import Document, Workspace
+from canopyresearch.models import Document, DocumentSource, Workspace
 from canopyresearch.services.providers import get_provider_class
 
 logger = logging.getLogger(__name__)
@@ -77,18 +78,27 @@ def fetch_workspace_sources(workspace_id: int) -> dict[str, int]:
                 elif published_at is None:
                     published_at = timezone.now()
 
-                # Create or update document
-                doc, created = Document.objects.update_or_create(
+                # Generate hash for deduplication
+                # Create hash from URL + title for deduplication
+                content_to_hash = f"{doc_data['url']}:{doc_data.get('title', '')}"
+                doc_hash = hashlib.sha256(content_to_hash.encode()).hexdigest()
+
+                # Get or create document by workspace and hash (workspace-level deduplication)
+                doc, created = Document.objects.get_or_create(
                     workspace=workspace,
-                    source=source,
-                    url=doc_data["url"],
+                    hash=doc_hash,
                     defaults={
                         "title": doc_data.get("title", ""),
+                        "url": doc_data["url"],
                         "content": doc_data.get("content", ""),
                         "published_at": published_at,
                         "metadata": doc_data.get("metadata", {}),
                     },
                 )
+
+                # Associate document with source (if not already associated)
+                DocumentSource.objects.get_or_create(document=doc, source=source)
+
                 if created:
                     saved_count += 1
 
