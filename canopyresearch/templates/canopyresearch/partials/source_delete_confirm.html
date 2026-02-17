@@ -1,0 +1,17 @@
+<p>Are you sure you want to delete <strong>{{ source.name }}</strong>? This action cannot be undone.</p>
+<form method="post" action="{% url 'source_delete' workspace.id source.id %}"
+      hx-post="{% url 'source_delete' workspace.id source.id %}"
+      hx-swap="none"
+      hx-headers='{"HX-Request": "true"}'>
+    {% csrf_token %}
+    <div class="form-actions">
+        <sl-button type="submit" variant="danger">Delete</sl-button>
+        <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>
+    </div>
+</form>
+<script>
+(function() {
+  var d = document.getElementById('resource-dialog');
+  if (d) { d.label = 'Delete Source'; d.show(); }
+})();
+</script>

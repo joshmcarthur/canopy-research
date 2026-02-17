@@ -7,10 +7,14 @@ from django.urls import path
 from canopyresearch import views
 
 urlpatterns = [
-    path("", views.workspace_list, name="workspace_list"),
-    path("workspaces/", views.workspace_list),
+    path("", views.workspace_create, name="workspace_create"),
     path("workspaces/create/", views.workspace_create, name="workspace_create"),
     path("workspaces/<int:workspace_id>/", views.workspace_detail, name="workspace_detail"),
+    path(
+        "workspaces/<int:workspace_id>/edit/",
+        views.workspace_edit,
+        name="workspace_edit",
+    ),
     path(
         "workspaces/<int:workspace_id>/switch/",
         views.workspace_switch,

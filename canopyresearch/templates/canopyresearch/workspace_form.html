@@ -3,35 +3,10 @@
 {% block title %}Create Workspace - Canopy Research{% endblock %}
 
 {% block content %}
-<h2>Create Workspace</h2>
-
-<sl-card>
-    <form method="post">
-        {% csrf_token %}
-        <sl-input
-            label="Name"
-            name="name"
-            value="{{ form.name.value|default:'' }}"
-            required
-        ></sl-input>
-        {% if form.name.errors %}
-            <div style="color: red;">{{ form.name.errors }}</div>
-        {% endif %}
-
-        <sl-textarea
-            label="Description"
-            name="description"
-            rows="3"
-            style="margin-top: 10px;"
-        >{{ form.description.value|default:'' }}</sl-textarea>
-        {% if form.description.errors %}
-            <div style="color: red;">{{ form.description.errors }}</div>
-        {% endif %}
-
-        <sl-button type="submit" variant="primary" style="margin-top: 20px;">Create</sl-button>
-        <a href="{% url 'workspace_list' %}">
-            <sl-button variant="default">Cancel</sl-button>
-        </a>
+<div class="canopy-center">
+    <h2 class="canopy-prompt">What can I help you with?</h2>
+    <form method="post" action="{% url 'workspace_create' %}" class="canopy-form">
+        {% include "canopyresearch/partials/workspace_form_fields.html" %}
     </form>
-</sl-card>
+</div>
 {% endblock %}

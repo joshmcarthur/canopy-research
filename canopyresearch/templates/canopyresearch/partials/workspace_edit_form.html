@@ -1,0 +1,41 @@
+<form method="post" action="{% url 'workspace_edit' workspace.id %}"
+      hx-post="{% url 'workspace_edit' workspace.id %}"
+      hx-target="#dialog-body"
+      hx-swap="innerHTML">
+    {% csrf_token %}
+    <sl-input
+        label="Name"
+        name="name"
+        value="{{ form.name.value|default:'' }}"
+        required
+        class="form-group"
+    ></sl-input>
+    {% if form.name.errors %}
+        <div class="form-error">{{ form.name.errors }}</div>
+    {% endif %}
+
+    <sl-textarea
+        label="Description"
+        name="description"
+        rows="4"
+        placeholder="Add a description for this workspace..."
+        class="form-group"
+    >{{ form.description.value|default:'' }}</sl-textarea>
+    {% if form.description.errors %}
+        <div class="form-error">{{ form.description.errors }}</div>
+    {% endif %}
+
+    <div class="form-actions">
+        <sl-button type="submit" variant="primary">Save</sl-button>
+        <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>
+    </div>
+</form>
+<script>
+(function() {
+  var d = document.getElementById('resource-dialog');
+  if (d) {
+    d.label = 'Edit Workspace';
+    d.show();
+  }
+})();
+</script>

@@ -1,0 +1,32 @@
+<div id="documents-tab-content">
+    {% if documents %}
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Source</th>
+                <th>Published</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for document in documents %}
+            <tr>
+                <td>
+                    <a rel="noopener noreferrer" href="{{ document.url }}" target="_blank">{{ document.title }}</a>
+                </td>
+                <td>
+                    {% for source in document.sources.all %}
+                        <sl-badge variant="neutral">{{ source.name }}</sl-badge>
+                    {% endfor %}
+                </td>
+                <td>{{ document.published_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No documents yet. Documents will appear here after sources are fetched.</p>
+    </div>
+    {% endif %}
+</div>

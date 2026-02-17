@@ -1,0 +1,435 @@
+/**
+ * Canopy Research - Minimal monochrome Shoelace theme overrides.
+ * Single accent color, light/dark base surfaces, system font stack.
+ */
+
+:root,
+:host,
+.sl-theme-light {
+  /* System font stack (Shoelace default) */
+  --sl-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+
+  /* Monochrome: neutral gray as primary accent */
+  --sl-color-primary-50: var(--sl-color-gray-50);
+  --sl-color-primary-100: var(--sl-color-gray-100);
+  --sl-color-primary-200: var(--sl-color-gray-200);
+  --sl-color-primary-300: var(--sl-color-gray-300);
+  --sl-color-primary-400: var(--sl-color-gray-400);
+  --sl-color-primary-500: var(--sl-color-gray-500);
+  --sl-color-primary-600: var(--sl-color-gray-600);
+  --sl-color-primary-700: var(--sl-color-gray-700);
+  --sl-color-primary-800: var(--sl-color-gray-800);
+  --sl-color-primary-900: var(--sl-color-gray-900);
+  --sl-color-primary-950: var(--sl-color-gray-950);
+
+  /* Light base surface */
+  --sl-color-neutral-0: #ffffff;
+  --sl-color-neutral-50: #fafafa;
+  --sl-color-neutral-100: #f5f5f5;
+  --sl-color-neutral-200: #e5e5e5;
+  --sl-color-neutral-300: #d4d4d4;
+  --sl-color-neutral-400: #a3a3a3;
+  --sl-color-neutral-500: #737373;
+  --sl-color-neutral-600: #525252;
+  --sl-color-neutral-700: #404040;
+  --sl-color-neutral-800: #262626;
+  --sl-color-neutral-900: #171717;
+  --sl-color-neutral-950: #0a0a0a;
+  --sl-color-neutral-1000: #000000;
+}
+
+.sl-theme-dark {
+  /* Dark base surface (inverted scale) */
+  --sl-color-neutral-0: #0a0a0a;
+  --sl-color-neutral-50: #171717;
+  --sl-color-neutral-100: #262626;
+  --sl-color-neutral-200: #404040;
+  --sl-color-neutral-300: #525252;
+  --sl-color-neutral-400: #737373;
+  --sl-color-neutral-500: #a3a3a3;
+  --sl-color-neutral-600: #d4d4d4;
+  --sl-color-neutral-700: #e5e5e5;
+  --sl-color-neutral-800: #f5f5f5;
+  --sl-color-neutral-900: #fafafa;
+  --sl-color-neutral-950: #ffffff;
+  --sl-color-neutral-1000: #ffffff;
+}
+
+/* Shell layout utilities */
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--sl-color-neutral-200, #e5e5e5);
+  background: var(--sl-color-neutral-100, #f5f5f5);
+}
+
+.sl-theme-dark .app-header {
+  border-bottom-color: var(--sl-color-neutral-200);
+}
+
+.app-header-start {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.app-header-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-header-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.workspace-switcher-trigger {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--sl-color-neutral-800, #262626);
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--sl-font-sans);
+}
+
+.sl-theme-dark .workspace-switcher-trigger {
+  color: var(--sl-color-neutral-200);
+}
+
+.workspace-switcher-trigger:hover {
+  color: var(--sl-color-neutral-600, #525252);
+}
+
+.sl-theme-dark .workspace-switcher-trigger:hover {
+  color: var(--sl-color-neutral-400);
+}
+
+.app-main {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Centered composer layout (ChatGPT-style) */
+.canopy-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+}
+
+.canopy-prompt {
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: var(--sl-color-neutral-600, #525252);
+  margin-bottom: 1.5rem;
+}
+
+.sl-theme-dark .canopy-prompt {
+  color: var(--sl-color-neutral-400);
+}
+
+/* Base body defaults */
+body {
+  font-family: var(--sl-font-sans);
+  margin: 0;
+  padding: 0;
+  background-color: var(--sl-color-neutral-0, #fff);
+}
+
+.sl-theme-dark body {
+  background-color: var(--sl-color-neutral-0);
+}
+
+sl-card {
+  margin-bottom: 20px;
+}
+
+.brandmark {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--sl-color-neutral-800, #262626);
+  text-decoration: none;
+}
+
+.sl-theme-dark .brandmark {
+  color: var(--sl-color-neutral-200);
+}
+
+.brandmark:hover {
+  color: var(--sl-color-neutral-600, #525252);
+}
+
+/* Tab nav (workspace detail) */
+.tab-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--sl-color-neutral-200, #e5e5e5);
+  margin-top: 1.5rem;
+}
+
+.tab-nav-left {
+  display: flex;
+  gap: 0;
+}
+
+.tab-nav-right {
+  display: flex;
+  align-items: center;
+  padding-right: 0.5rem;
+}
+
+.tab-link {
+  padding: 0.75rem 1.25rem;
+  font-size: 0.875rem;
+  color: var(--sl-color-neutral-600, #525252);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tab-link:hover {
+  color: var(--sl-color-neutral-800, #262626);
+}
+
+.tab-link.active {
+  color: var(--sl-color-primary-600, #525252);
+  border-bottom-color: currentColor;
+}
+
+.tab-panel {
+  padding-top: 1.5rem;
+}
+
+/* Alert container for Django messages */
+.alert-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 400px;
+}
+
+/* Form utilities */
+.canopy-form {
+  width: 100%;
+  max-width: 560px;
+}
+
+.canopy-input-group {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.canopy-input {
+  flex: 1;
+}
+
+.canopy-input sl-input::part(base) {
+  font-size: 1rem;
+}
+
+.canopy-submit {
+  flex-shrink: 0;
+}
+
+.form-group {
+  margin-top: 0.75rem;
+}
+
+.form-group:first-child {
+  margin-top: 0;
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.form-submit {
+  margin-top: 1.25rem;
+}
+
+.form-error {
+  color: var(--sl-color-danger-600);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Card grid layout */
+.card-grid {
+  margin-top: 1rem;
+}
+
+/* Section heading */
+.section-heading {
+  margin-top: 3rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--sl-color-neutral-600, #525252);
+}
+
+.sl-theme-dark .section-heading {
+  color: var(--sl-color-neutral-400);
+}
+
+/* Document preview */
+.document-preview {
+  max-height: 100px;
+  overflow: hidden;
+}
+
+/* Workspace description */
+.workspace-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.workspace-description p {
+  flex: 1;
+  margin: 0;
+  color: var(--sl-color-neutral-600, #525252);
+  line-height: 1.5;
+}
+
+.sl-theme-dark .workspace-description p {
+  color: var(--sl-color-neutral-400);
+}
+
+.workspace-description-empty {
+  font-style: italic;
+  color: var(--sl-color-neutral-500, #737373) !important;
+}
+
+.sl-theme-dark .workspace-description-empty {
+  color: var(--sl-color-neutral-500) !important;
+}
+
+.workspace-description sl-button {
+  flex-shrink: 0;
+  margin-top: -0.25rem;
+}
+
+/* Data grid / table styles */
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  border: 1px solid var(--sl-color-neutral-200);
+  border-radius: var(--sl-border-radius-medium);
+  overflow: hidden;
+}
+
+.sl-theme-dark .data-grid {
+  border-color: var(--sl-color-neutral-200);
+}
+
+.data-grid thead {
+  background-color: var(--sl-color-neutral-50);
+}
+
+.sl-theme-dark .data-grid thead {
+  background-color: var(--sl-color-neutral-50);
+}
+
+.data-grid th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--sl-color-neutral-700);
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  border-bottom: 1px solid var(--sl-color-neutral-200);
+}
+
+.sl-theme-dark .data-grid th {
+  color: var(--sl-color-neutral-300);
+  border-bottom-color: var(--sl-color-neutral-200);
+}
+
+.data-grid tbody tr {
+  border-bottom: 1px solid var(--sl-color-neutral-200);
+}
+
+.data-grid tbody tr:last-child {
+  border-bottom: none;
+}
+
+.data-grid tbody tr:hover {
+  background-color: var(--sl-color-neutral-50);
+}
+
+.sl-theme-dark .data-grid tbody tr:hover {
+  background-color: var(--sl-color-neutral-50);
+}
+
+.data-grid td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+}
+
+.data-grid td a {
+  color: var(--sl-color-primary-600);
+  text-decoration: none;
+}
+
+.data-grid td a:hover {
+  text-decoration: underline;
+}
+
+.data-grid td sl-button {
+  margin-right: 0.5rem;
+}
+
+.data-grid td sl-button:last-child {
+  margin-right: 0;
+}
+
+.empty-state {
+  padding: 2rem;
+  text-align: center;
+  color: var(--sl-color-neutral-500);
+}
+
+.sl-theme-dark .empty-state {
+  color: var(--sl-color-neutral-400);
+}

@@ -6,12 +6,10 @@
     {% for document in documents %}
     <sl-card style="margin-bottom: 10px;">
         <div slot="header">
-            <strong><a href="{{ document.url }}" target="_blank" rel="noopener noreferrer">{{ document.title }}</a></strong>
+            <strong><a href="{{ document.url }}" target="_blank">{{ document.title }}</a></strong>
         </div>
         <p>
-            {% for source in document.sources.all %}
-                <sl-badge variant="neutral">{{ source.name }}</sl-badge>
-            {% endfor %}
+            <sl-badge variant="neutral">{{ document.source.name }}</sl-badge>
             <small>{{ document.published_at|date:"Y-m-d H:i" }}</small>
         </p>
     </sl-card>
