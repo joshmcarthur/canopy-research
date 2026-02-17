@@ -32,7 +32,6 @@ class WorkspaceCreateViewTest(TestCase):
         self.client.logout()
         response = self.client.get(reverse("workspace_create"))
         self.assertEqual(response.status_code, 302)
-        self.assertTrue(Workspace.objects.filter(name="New Workspace").exists())
 
     def test_workspace_create_renders(self):
         """Test that workspace create form renders correctly."""

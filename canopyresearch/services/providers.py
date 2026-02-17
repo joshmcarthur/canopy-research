@@ -46,13 +46,18 @@ def _is_url_allowed(url: str) -> bool:
         if not hostname:
             return False
 
-        # Handle IPv6 addresses in brackets
-        if hostname.startswith('[') and hostname.endswith(']'):
+        # Block literal hostname "localhost" (no IP form)
+        if hostname.lower() == "localhost":
+            return False
+
+        # Handle IPv6 addresses in brackets (urlparse may already strip them)
+        if hostname.startswith("[") and hostname.endswith("]"):
             hostname = hostname[1:-1]
 
-        # Remove port if present (for IPv4)
-        if ':' in hostname and not hostname.startswith('['):
-            hostname = hostname.split(':')[0]
+        # Remove port only when it's IPv4:port (exactly one colon). IPv6 addresses
+        # contain colons, so splitting on ':' would truncate them (e.g. '::1' -> '').
+        if hostname.count(":") == 1:
+            hostname = hostname.split(":")[0]
 
         # Check if hostname is an IP address
         try:
@@ -68,13 +73,14 @@ def _is_url_allowed(url: str) -> bool:
             # Not an IP address, might be a hostname - allow it
             pass
 
-        # Check for IP patterns in hostname string (e.g., "127.0.0.1.example.com")
-        # This catches attempts to bypass checks with domain names containing IPs
-        parts = hostname.split('.')
-        for part in parts:
+        # Check for IP patterns in hostname (e.g., "127.0.0.1.example.com").
+        # Single segments like "127" are not valid IPs, so check every 4 consecutive
+        # segments for IPv4.
+        parts = hostname.split(".")
+        for i in range(len(parts) - 3):
+            quad = ".".join(parts[i : i + 4])
             try:
-                ipaddress.ip_address(part)
-                # Found an IP-like segment in hostname - deny
+                ipaddress.ip_address(quad)
                 return False
             except ValueError:
                 continue
@@ -100,10 +106,7 @@ def extract_article_content(url: str) -> str | None:
     try:
         # Stream response with max bytes cap
         resp = requests.get(
-            url,
-            headers={"User-Agent": USER_AGENT},
-            timeout=HTTP_TIMEOUT,
-            stream=True
+            url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT, stream=True
         )
         resp.raise_for_status()
 
@@ -124,7 +127,7 @@ def extract_article_content(url: str) -> str | None:
                 content_chunks.append(chunk)
 
         # Combine chunks
-        html_bytes = b''.join(content_chunks)
+        html_bytes = b"".join(content_chunks)
 
         try:
             html = html_bytes.decode("utf-8", errors="replace")
