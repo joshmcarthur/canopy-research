@@ -6,6 +6,7 @@ The pipeline owns validation, hashing, deduplication, and persistence.
 """
 
 import hashlib
+import ipaddress
 import os
 from datetime import datetime
 from typing import Any
@@ -24,24 +25,112 @@ NORMALIZED_SCHEMA_KEYS = {"external_id", "title", "url", "content", "published_a
 
 USER_AGENT = "canopy-research/0.1"
 HTTP_TIMEOUT = 30
+MAX_RESPONSE_SIZE = 10 * 1024 * 1024  # 10MB max response size
+
+
+def _is_url_allowed(url: str) -> bool:
+    """
+    Check if URL is allowed against DENY patterns.
+
+    Blocks:
+    - Direct IP addresses (IPv4 and IPv6)
+    - Private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    - Loopback addresses (127.0.0.0/8, ::1)
+    - Link-local addresses (169.254.0.0/16, fe80::/10)
+
+    Returns True if URL is allowed, False if denied.
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        # Handle IPv6 addresses in brackets
+        if hostname.startswith('[') and hostname.endswith(']'):
+            hostname = hostname[1:-1]
+
+        # Remove port if present (for IPv4)
+        if ':' in hostname and not hostname.startswith('['):
+            hostname = hostname.split(':')[0]
+
+        # Check if hostname is an IP address
+        try:
+            ip = ipaddress.ip_address(hostname)
+
+            # DENY: Block private, loopback, link-local, and reserved IPs
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+
+            # DENY: All direct IP addresses (even public ones) are blocked
+            return False
+        except ValueError:
+            # Not an IP address, might be a hostname - allow it
+            pass
+
+        # Check for IP patterns in hostname string (e.g., "127.0.0.1.example.com")
+        # This catches attempts to bypass checks with domain names containing IPs
+        parts = hostname.split('.')
+        for part in parts:
+            try:
+                ipaddress.ip_address(part)
+                # Found an IP-like segment in hostname - deny
+                return False
+            except ValueError:
+                continue
+
+        return True
+    except Exception:
+        # On any parsing error, deny to be safe
+        return False
 
 
 def extract_article_content(url: str) -> str | None:
     """
     Fetch URL and extract main article content using readability.
 
+    Validates URL against DENY patterns and enforces max response size.
+
     Returns plain text or None on failure. Caller should fall back to snippet.
     """
+    # Validate URL against DENY patterns
+    if not _is_url_allowed(url):
+        return None
+
     try:
-        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)
+        # Stream response with max bytes cap
+        resp = requests.get(
+            url,
+            headers={"User-Agent": USER_AGENT},
+            timeout=HTTP_TIMEOUT,
+            stream=True
+        )
         resp.raise_for_status()
+
         content_type = resp.headers.get("Content-Type", "")
         if "text/html" not in content_type and "application/xhtml" not in content_type:
             return None
+
+        # Stream response content with size limit
+        content_chunks = []
+        total_size = 0
+
+        for chunk in resp.iter_content(chunk_size=8192):
+            if chunk:
+                total_size += len(chunk)
+                if total_size > MAX_RESPONSE_SIZE:
+                    # Response exceeds max size, abort
+                    return None
+                content_chunks.append(chunk)
+
+        # Combine chunks
+        html_bytes = b''.join(content_chunks)
+
         try:
-            html = resp.content.decode("utf-8", errors="replace")
+            html = html_bytes.decode("utf-8", errors="replace")
         except (UnicodeDecodeError, AttributeError):
             return None
+
         doc = ReadabilityDocument(html)
         summary_html = doc.summary()
         if not summary_html or not summary_html.strip():

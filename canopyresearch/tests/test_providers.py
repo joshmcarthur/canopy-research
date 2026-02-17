@@ -16,6 +16,7 @@ from canopyresearch.services.providers import (
     RSSProvider,
     SubredditProvider,
     _extract_links_from_html,
+    _is_url_allowed,
     extract_article_content,
     get_provider_class,
 )
@@ -209,10 +210,12 @@ class RSSProviderTest(TestCase):
         mock_resp_feed.raise_for_status = MagicMock()
 
         html_content = "<html><body><article><p>Article body text</p></article></body></html>"
+        html_bytes = html_content.encode("utf-8")
         mock_resp_article = MagicMock()
-        mock_resp_article.content = html_content.encode("utf-8")
+        mock_resp_article.content = html_bytes
         mock_resp_article.headers = {"Content-Type": "text/html"}
         mock_resp_article.raise_for_status = MagicMock()
+        mock_resp_article.iter_content.return_value = [html_bytes]
 
         # Feed + 2 article URLs (example.com/1 and example.com/2)
         mock_get.side_effect = [mock_resp_feed, mock_resp_article, mock_resp_article]
@@ -486,6 +489,56 @@ class SubredditProviderTest(TestCase):
         mock_get.assert_not_called()
 
 
+class IsUrlAllowedTest(TestCase):
+    """Test _is_url_allowed URL validation."""
+
+    def test_allows_valid_domain(self):
+        """Test that valid domains are allowed."""
+        self.assertTrue(_is_url_allowed("https://example.com/article"))
+        self.assertTrue(_is_url_allowed("http://www.github.com"))
+        self.assertTrue(_is_url_allowed("https://subdomain.example.org/path"))
+
+    def test_blocks_ipv4_addresses(self):
+        """Test that IPv4 addresses are blocked."""
+        self.assertFalse(_is_url_allowed("http://192.168.1.1"))
+        self.assertFalse(_is_url_allowed("https://8.8.8.8"))
+        self.assertFalse(_is_url_allowed("http://127.0.0.1:8080"))
+
+    def test_blocks_ipv6_addresses(self):
+        """Test that IPv6 addresses are blocked."""
+        self.assertFalse(_is_url_allowed("http://[::1]"))
+        self.assertFalse(_is_url_allowed("https://[2001:db8::1]"))
+        self.assertFalse(_is_url_allowed("http://[fe80::1]:8080"))
+
+    def test_blocks_private_ip_ranges(self):
+        """Test that private IP ranges are blocked."""
+        self.assertFalse(_is_url_allowed("http://10.0.0.1"))
+        self.assertFalse(_is_url_allowed("https://172.16.0.1"))
+        self.assertFalse(_is_url_allowed("http://192.168.0.1"))
+
+    def test_blocks_loopback_addresses(self):
+        """Test that loopback addresses are blocked."""
+        self.assertFalse(_is_url_allowed("http://127.0.0.1"))
+        self.assertFalse(_is_url_allowed("https://localhost"))
+        self.assertFalse(_is_url_allowed("http://[::1]"))
+
+    def test_blocks_link_local_addresses(self):
+        """Test that link-local addresses are blocked."""
+        self.assertFalse(_is_url_allowed("http://169.254.0.1"))
+        self.assertFalse(_is_url_allowed("http://[fe80::1]"))
+
+    def test_blocks_ip_in_hostname(self):
+        """Test that hostnames containing IP segments are blocked."""
+        self.assertFalse(_is_url_allowed("http://127.0.0.1.example.com"))
+        self.assertFalse(_is_url_allowed("https://192.168.1.1.malicious.com"))
+
+    def test_blocks_invalid_urls(self):
+        """Test that invalid URLs are blocked."""
+        self.assertFalse(_is_url_allowed("not-a-url"))
+        self.assertFalse(_is_url_allowed(""))
+        self.assertFalse(_is_url_allowed("http://"))
+
+
 class ExtractArticleContentTest(TestCase):
     """Test extract_article_content helper."""
 
@@ -497,6 +550,7 @@ class ExtractArticleContentTest(TestCase):
         mock_resp.content = html.encode("utf-8")
         mock_resp.headers = {"Content-Type": "text/html"}
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.iter_content.return_value = [html.encode("utf-8")]
         mock_get.return_value = mock_resp
 
         result = extract_article_content("https://example.com/article")
@@ -520,6 +574,31 @@ class ExtractArticleContentTest(TestCase):
         mock_get.side_effect = requests.Timeout()
 
         result = extract_article_content("https://example.com/slow")
+        self.assertIsNone(result)
+
+    def test_extract_article_content_blocks_ip_addresses(self):
+        """Test extract_article_content blocks IP addresses."""
+        result = extract_article_content("http://127.0.0.1")
+        self.assertIsNone(result)
+        result = extract_article_content("https://192.168.1.1")
+        self.assertIsNone(result)
+        result = extract_article_content("http://[::1]")
+        self.assertIsNone(result)
+
+    @patch("canopyresearch.services.providers.requests.get")
+    def test_extract_article_content_enforces_size_limit(self, mock_get):
+        """Test extract_article_content enforces max response size."""
+        from canopyresearch.services.providers import MAX_RESPONSE_SIZE
+
+        # Create a response that exceeds MAX_RESPONSE_SIZE
+        large_chunk = b"x" * (MAX_RESPONSE_SIZE + 1)
+        mock_resp = MagicMock()
+        mock_resp.headers = {"Content-Type": "text/html"}
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.iter_content.return_value = [large_chunk]
+        mock_get.return_value = mock_resp
+
+        result = extract_article_content("https://example.com/large")
         self.assertIsNone(result)
 
 
