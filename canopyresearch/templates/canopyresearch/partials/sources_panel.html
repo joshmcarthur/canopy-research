@@ -1,0 +1,83 @@
+<div id="sources-tab-content">
+    <div class="sources-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <span></span>
+        <span id="ingest-trigger">
+            <form hx-post="{% url 'workspace_ingest' workspace.id %}"
+                hx-target="#ingest-trigger"
+                hx-swap="outerHTML"
+                style="display: inline;">
+                {% csrf_token %}
+                <sl-button type="submit" variant="default" size="small">
+                    <sl-icon slot="prefix" name="arrow-repeat"></sl-icon>
+                    Ingest Now
+                </sl-button>
+            </form>
+        </span>
+    </div>
+    {% if sources %}
+    <table class="data-grid">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Provider Type</th>
+                <th>Status</th>
+                <th>Last Fetched</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for source in sources %}
+            <tr>
+                <td><strong>{{ source.name }}</strong></td>
+                <td>
+                    <sl-badge variant="primary">{{ source.get_provider_type_display }}</sl-badge>
+                </td>
+                <td>
+                    {% if source.status == 'healthy' %}
+                        <sl-badge variant="success">{{ source.get_status_display }}</sl-badge>
+                    {% elif source.status == 'error' %}
+                        <sl-badge variant="danger">{{ source.get_status_display }}</sl-badge>
+                    {% else %}
+                        <sl-badge variant="neutral">{{ source.get_status_display }}</sl-badge>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if source.last_successful_fetch %}
+                        {{ source.last_successful_fetch|date:"Y-m-d H:i" }}
+                    {% elif source.last_fetched %}
+                        {{ source.last_fetched|date:"Y-m-d H:i" }}
+                    {% else %}
+                        <span style="color: var(--sl-color-neutral-400);">Never</span>
+                    {% endif %}
+                    {% if source.last_error %}
+                    <sl-details summary="Last error" style="margin-top: 0.25rem;">
+                        <span style="font-size: 0.875rem; color: var(--sl-color-danger-600);">{{ source.last_error|truncatewords:30 }}</span>
+                    </sl-details>
+                    {% endif %}
+                </td>
+                <td>
+                    <sl-button variant="default" size="small"
+                        hx-get="{% url 'source_edit' workspace.id source.id %}"
+                        hx-target="#dialog-body"
+                        hx-swap="innerHTML"
+                        onclick="document.getElementById('resource-dialog').show()">
+                        Edit
+                    </sl-button>
+                    <sl-button variant="danger" size="small"
+                        hx-get="{% url 'source_delete' workspace.id source.id %}"
+                        hx-target="#dialog-body"
+                        hx-swap="innerHTML"
+                        onclick="document.getElementById('resource-dialog').show()">
+                        Delete
+                    </sl-button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>No sources yet.</p>
+    </div>
+    {% endif %}
+</div>

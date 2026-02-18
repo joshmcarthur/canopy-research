@@ -1,0 +1,12 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}Create Workspace - Canopy Research{% endblock %}
+
+{% block content %}
+<div class="canopy-center">
+    <h2 class="canopy-prompt">What can I help you with?</h2>
+    <form method="post" action="{% url 'workspace_create' %}" class="canopy-form">
+        {% include "canopyresearch/partials/workspace_form_fields.html" %}
+    </form>
+</div>
+{% endblock %}

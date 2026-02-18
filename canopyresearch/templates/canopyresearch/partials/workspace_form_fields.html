@@ -1,0 +1,18 @@
+{% csrf_token %}
+<div class="canopy-input-group">
+    <sl-input
+        name="name"
+        value="{{ form.name.value|default:'' }}"
+        placeholder="Describe your research focus..."
+        pill
+        size="large"
+        class="canopy-input"
+        required
+    ></sl-input>
+    <sl-button type="submit" variant="primary" circle size="large" class="canopy-submit">
+        <sl-icon name="arrow-right" label="Create workspace"></sl-icon>
+    </sl-button>
+</div>
+{% if form.name.errors %}
+    <div class="form-error">{{ form.name.errors }}</div>
+{% endif %}

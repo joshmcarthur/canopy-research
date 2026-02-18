@@ -1,0 +1,69 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}{% if source %}Edit{% else %}Create{% endif %} Source - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>{% if source %}Edit{% else %}Create{% endif %} Source</h2>
+
+<sl-card>
+    <form method="post">
+        {% csrf_token %}
+        <sl-input
+            label="Name"
+            name="name"
+            value="{{ form.name.value|default:'' }}"
+            required
+        ></sl-input>
+        {% if form.name.errors %}
+            <div class="form-error">{{ form.name.errors }}</div>
+        {% endif %}
+
+        <sl-select
+            label="Provider Type"
+            name="provider_type"
+            value="{{ form.provider_type.value|default:'rss' }}"
+            class="form-group"
+            required
+        >
+            {% for value, label in form.fields.provider_type.choices %}
+            <sl-option value="{{ value }}">{{ label }}</sl-option>
+            {% endfor %}
+        </sl-select>
+        {% if form.provider_type.errors %}
+            <div class="form-error">{{ form.provider_type.errors }}</div>
+        {% endif %}
+
+        <sl-textarea
+            label="Config (JSON)"
+            name="config_json"
+            rows="4"
+            placeholder='{"url": "https://example.com/feed.xml"}'
+            class="form-group"
+        >{{ form.config_json.value|default:'{}' }}</sl-textarea>
+        {% if form.config_json.errors %}
+            <div class="form-error">{{ form.config_json.errors }}</div>
+        {% endif %}
+
+        <sl-select
+            label="Status"
+            name="status"
+            value="{{ form.status.value|default:'healthy' }}"
+            class="form-group"
+        >
+            {% for value, label in form.fields.status.choices %}
+            <sl-option value="{{ value }}">{{ label }}</sl-option>
+            {% endfor %}
+        </sl-select>
+        {% if form.status.errors %}
+            <div class="form-error">{{ form.status.errors }}</div>
+        {% endif %}
+
+        <div class="form-actions">
+            <sl-button type="submit" variant="primary">Save</sl-button>
+            <a href="{% url 'source_list' workspace.id %}">
+                <sl-button variant="default">Cancel</sl-button>
+            </a>
+        </div>
+    </form>
+</sl-card>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}{{ workspace.name }} - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>{{ workspace.name }}</h2>
+<div class="workspace-description">
+    {% if workspace.description %}
+        <p>{{ workspace.description }}</p>
+    {% else %}
+        <p class="workspace-description-empty">No description yet</p>
+    {% endif %}
+    <sl-button variant="text" size="small"
+               hx-get="{% url 'workspace_edit' workspace.id %}"
+               hx-target="#dialog-body"
+               hx-swap="innerHTML"
+               onclick="document.getElementById('resource-dialog').show()">
+        <sl-icon slot="prefix" name="pencil"></sl-icon>
+        Edit
+    </sl-button>
+</div>
+
+<div class="tab-nav" role="tablist">
+    <div class="tab-nav-left">
+        <a href="{% url 'source_list' workspace.id %}"
+           class="tab-link {% if active_tab == 'sources' %}active{% endif %}"
+           hx-get="{% url 'source_list' workspace.id %}"
+           hx-target="#tab-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           role="tab">Sources</a>
+        <a href="{% url 'document_list' workspace.id %}"
+           class="tab-link {% if active_tab == 'documents' %}active{% endif %}"
+           hx-get="{% url 'document_list' workspace.id %}"
+           hx-target="#tab-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           role="tab">Documents</a>
+    </div>
+    <div class="tab-nav-right">
+        <sl-button id="add-source-button" variant="primary" size="small"
+            hx-get="{% url 'source_create' workspace.id %}"
+            hx-target="#dialog-body"
+            hx-swap="innerHTML"
+            onclick="document.getElementById('resource-dialog').show()"
+            style="display: {% if active_tab == 'sources' %}block{% else %}none{% endif %};">
+            <sl-icon slot="prefix" name="plus-lg"></sl-icon>
+            Add Source
+        </sl-button>
+    </div>
+</div>
+<div id="tab-content" class="tab-panel">
+    {% include tab_content_template %}
+</div>
+<script>
+(function() {
+    function updateActiveTab() {
+        var path = window.location.pathname;
+        var tabNavRight = document.querySelector('.tab-nav-right');
+        var addSourceButton = tabNavRight ? tabNavRight.querySelector('sl-button') : null;
+
+        document.querySelectorAll('.tab-nav .tab-link').forEach(function(a) {
+            var isActive = a.getAttribute('href') && path.indexOf(a.getAttribute('href')) !== -1;
+            a.classList.toggle('active', isActive);
+
+            // Show/hide Add Source button based on active tab
+            if (addSourceButton && isActive) {
+                if (a.textContent.trim() === 'Sources') {
+                    addSourceButton.style.display = '';
+                } else {
+                    addSourceButton.style.display = 'none';
+                }
+            }
+        });
+
+        // Initial check
+        if (addSourceButton) {
+            var sourcesTab = document.querySelector('.tab-link[href*="sources"]');
+            if (sourcesTab && sourcesTab.classList.contains('active')) {
+                addSourceButton.style.display = '';
+            } else {
+                addSourceButton.style.display = 'none';
+            }
+        }
+    }
+    document.addEventListener('DOMContentLoaded', updateActiveTab);
+    document.body.addEventListener('htmx:afterSwap', updateActiveTab);
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,66 @@
+<form method="post" action="{% url 'source_create' workspace.id %}"
+      hx-post="{% url 'source_create' workspace.id %}"
+      hx-target="#dialog-body"
+      hx-swap="innerHTML">
+    {% csrf_token %}
+    <sl-input
+        label="Name"
+        name="name"
+        value="{{ form.name.value|default:'' }}"
+        required
+    ></sl-input>
+    {% if form.name.errors %}
+        <div class="form-error">{{ form.name.errors }}</div>
+    {% endif %}
+
+    <sl-select
+        label="Provider Type"
+        name="provider_type"
+        value="{{ form.provider_type.value|default:'rss' }}"
+        class="form-group"
+        required
+    >
+        {% for value, label in form.fields.provider_type.choices %}
+        <sl-option value="{{ value }}">{{ label }}</sl-option>
+        {% endfor %}
+    </sl-select>
+    {% if form.provider_type.errors %}
+        <div class="form-error">{{ form.provider_type.errors }}</div>
+    {% endif %}
+
+    <sl-textarea
+        label="Config (JSON)"
+        name="config_json"
+        rows="4"
+        placeholder='{"url": "https://example.com/feed.xml"}'
+        class="form-group"
+    >{{ form.config_json.value|default:'{}' }}</sl-textarea>
+    {% if form.config_json.errors %}
+        <div class="form-error">{{ form.config_json.errors }}</div>
+    {% endif %}
+
+    <sl-select
+        label="Status"
+        name="status"
+        value="{{ form.status.value|default:'healthy' }}"
+        class="form-group"
+    >
+        {% for value, label in form.fields.status.choices %}
+        <sl-option value="{{ value }}">{{ label }}</sl-option>
+        {% endfor %}
+    </sl-select>
+    {% if form.status.errors %}
+        <div class="form-error">{{ form.status.errors }}</div>
+    {% endif %}
+
+    <div class="form-actions">
+        <sl-button type="submit" variant="primary">Create</sl-button>
+        <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>
+    </div>
+</form>
+<script>
+(function() {
+  var d = document.getElementById('resource-dialog');
+  if (d) { d.label = 'Create Source'; d.show(); }
+})();
+</script>
