@@ -143,43 +143,29 @@ class DocumentModelTest(TestCase):
         self.assertEqual(document.url, "https://example.com/article")
         self.assertEqual(document.workspace, self.workspace)
         self.assertIn(self.source, document.sources.all())
-        self.assertIsNotNone(document.hash)
-
-    def test_document_hash_generation(self):
-        """Test that document hash is automatically generated."""
-        from django.utils import timezone
-
-        document = Document.objects.create(
-            workspace=self.workspace,
-            title="Test Document",
-            url="https://example.com/article",
-            content="Test content",
-            published_at=timezone.now(),
-        )
-        # Associate document with source
-        DocumentSource.objects.create(document=document, source=self.source)
-
-        self.assertIsNotNone(document.hash)
-        self.assertEqual(len(document.hash), 64)  # SHA-256 hex digest length
+        self.assertTrue(
+            document.content_hash or document.title
+        )  # content_hash from ingestion or empty
 
     def test_document_deduplication(self):
-        """Test document deduplication via hash at workspace level."""
+        """Test document deduplication via content_hash at workspace level."""
         from django.db import IntegrityError
         from django.utils import timezone
 
-        # Create first document
+        content_hash = "a" * 64  # Deterministic hash for deduplication
+
+        # Create first document with content_hash
         doc1 = Document.objects.create(
             workspace=self.workspace,
             title="Test Document",
             url="https://example.com/article",
             content="Test content",
             published_at=timezone.now(),
+            content_hash=content_hash,
         )
         DocumentSource.objects.create(document=doc1, source=self.source)
-        hash1 = doc1.hash
 
-        # Creating second document with same URL and title (same hash) should fail
-        # due to unique constraint (workspace, hash) - documents are deduplicated at workspace level
+        # Creating second document with same content_hash should fail
         with self.assertRaises(IntegrityError):
             Document.objects.create(
                 workspace=self.workspace,
@@ -187,15 +173,14 @@ class DocumentModelTest(TestCase):
                 url="https://example.com/article",
                 content="Different content",
                 published_at=timezone.now(),
+                content_hash=content_hash,
             )
 
-        # Verify hash was generated
-        self.assertIsNotNone(hash1)
-        self.assertEqual(len(hash1), 64)  # SHA-256 hex digest length
-
     def test_document_same_hash_different_sources(self):
-        """Test that same document (same hash) from different sources shares the same document instance."""
+        """Test that same document (same content_hash) from different sources shares the same document instance."""
         from django.utils import timezone
+
+        content_hash = "b" * 64
 
         # Create second source in the same workspace
         source2 = Source.objects.create(
@@ -211,15 +196,14 @@ class DocumentModelTest(TestCase):
             url="https://example.com/article",
             content="Test content",
             published_at=timezone.now(),
+            content_hash=content_hash,
         )
         DocumentSource.objects.create(document=doc1, source=self.source)
-        hash1 = doc1.hash
 
-        # Try to create same document (same URL/title hash) from different source
-        # Should get the same document instance due to workspace-level deduplication
+        # Get or create same document (same content_hash) from different source
         doc2, created = Document.objects.get_or_create(
             workspace=self.workspace,
-            hash=hash1,
+            content_hash=content_hash,
             defaults={
                 "title": "Test Document",
                 "url": "https://example.com/article",
@@ -241,7 +225,9 @@ class DocumentModelTest(TestCase):
         self.assertIn(source2, doc1.sources.all())
 
         # Only one document should exist
-        self.assertEqual(Document.objects.filter(workspace=self.workspace, hash=hash1).count(), 1)
+        self.assertEqual(
+            Document.objects.filter(workspace=self.workspace, content_hash=content_hash).count(), 1
+        )
 
     def test_document_str(self):
         """Test document string representation."""

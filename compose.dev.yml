@@ -1,5 +1,6 @@
 services:
   app:
+    image: canopy-research:dev
     # Entrypoint runs migrations/seeds, then executes the command
     # Pass Django runserver command for development with hot reload
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
@@ -19,3 +20,18 @@ services:
       - SKIP_SEEDS=${SKIP_SEEDS:-true}
       # Set SKIP_MIGRATIONS=true to skip migrations
       - SKIP_MIGRATIONS=${SKIP_MIGRATIONS:-false}
+
+  worker:
+    image: canopy-research:dev
+    command: ["python", "manage.py", "db_worker", "--reload"]
+    volumes:
+      - .:/app
+      - /app/.venv
+      - /app/staticfiles
+      - /app/__pycache__
+    environment:
+      - DEBUG=True
+      - SKIP_MIGRATIONS=true
+      - SKIP_SEEDS=true
+    depends_on:
+      - app
