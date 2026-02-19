@@ -124,14 +124,17 @@ def update_workspace_core_centroid(workspace: Workspace) -> list[float] | None:
             document_weights[seed.document_id] = 1.0  # Seeds have positive weight
 
     # Collect embeddings with weights
+    # Fetch all required documents in a single query to avoid N+1 lookups
+    documents = Document.objects.filter(pk__in=list(document_weights.keys()))
+    documents_by_id = {doc.id: doc for doc in documents}
+
     weighted_embeddings: list[tuple[list[float], float]] = []
     for doc_id, weight in document_weights.items():
-        try:
-            doc = Document.objects.get(pk=doc_id)
-            if doc.embedding and isinstance(doc.embedding, list) and len(doc.embedding) > 0:
-                weighted_embeddings.append((doc.embedding, weight))
-        except Document.DoesNotExist:
+        doc = documents_by_id.get(doc_id)
+        if not doc:
             continue
+        if doc.embedding and isinstance(doc.embedding, list) and len(doc.embedding) > 0:
+            weighted_embeddings.append((doc.embedding, weight))
 
     if not weighted_embeddings:
         logger.warning("No valid embeddings found for workspace %s core centroid", workspace.id)

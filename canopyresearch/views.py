@@ -314,7 +314,7 @@ def workspace_core_seed(request, workspace_id):
     # GET: Show seed candidates
     seed_docs = workspace.core_seeds.select_related("document").all()
     # Get documents with embeddings for potential seeding
-    candidates = workspace.documents.filter(embedding__len__gt=0).exclude(embedding=[])[:20]
+    candidates = workspace.documents.exclude(embedding=[])[:20]
 
     context = {
         "workspace": workspace,

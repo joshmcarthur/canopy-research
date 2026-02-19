@@ -150,8 +150,8 @@ If you're upgrading from the previous default:
    - Existing embeddings will need to be recomputed
    - Run a migration task to re-embed all documents:
      ```python
-     from canopyresearch.tasks import task_batch_process_workspace
-     task_batch_process_workspace.enqueue(workspace_id=your_workspace_id)
+     from canopyresearch.tasks import task_process_workspace
+     task_process_workspace.enqueue(workspace_id=your_workspace_id)
      ```
 
 2. **Storage Impact:** Embeddings will use ~2x more storage space
