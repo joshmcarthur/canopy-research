@@ -61,16 +61,10 @@ def seed_workspace_core(workspace: Workspace, num_seeds: int = 5) -> list[Docume
     query_embedding = backend.embed_texts([query_text])[0]
 
     # Find documents with embeddings in this workspace
-    # Note: embedding__len__gt=0 is PostgreSQL-specific, so we filter in Python for compatibility
-    all_documents = workspace.documents.all()
-
-    # Filter documents that have valid embeddings
-    documents_with_embeddings = [
-        doc
-        for doc in all_documents
-        if doc.embedding and isinstance(doc.embedding, list) and len(doc.embedding) > 0
-    ]
-
+    # Filter at the database level for portability and efficiency across databases
+    documents_with_embeddings = workspace.documents.filter(
+        embedding__isnull=False
+    ).exclude(embedding=[])
     if not documents_with_embeddings:
         logger.info("No documents with embeddings found for workspace %s", workspace.id)
         return []
