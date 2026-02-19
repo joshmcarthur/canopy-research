@@ -11,8 +11,9 @@
             </sl-button>
         </div>
     </div>
+    {% if clusters or single_doc_clusters %}
     {% if clusters %}
-    <div class="clusters-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+    <div class="clusters-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
         {% for cluster in clusters %}
         <sl-card class="cluster-card">
             <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -62,6 +63,62 @@
         </sl-card>
         {% endfor %}
     </div>
+    {% endif %}
+    
+    {% if single_doc_clusters %}
+    <sl-details summary="Single-Document Clusters ({{ single_doc_clusters|length }})" style="margin-top: 1rem;">
+        <div class="clusters-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+            {% for cluster in single_doc_clusters %}
+            <sl-card class="cluster-card">
+                <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong>Cluster {{ cluster.id }}</strong>
+                    <sl-badge variant="neutral">Size: {{ cluster.size }}</sl-badge>
+                </div>
+                <div class="cluster-metrics" style="display: flex; flex-direction: column; gap: 0.5rem;">
+                    {% if cluster.alignment is not None %}
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Alignment:</span>
+                        <sl-badge variant="{% if cluster.alignment >= 0.7 %}success{% elif cluster.alignment >= 0.4 %}warning{% else %}neutral{% endif %}">
+                            {{ cluster.alignment|floatformat:2 }}
+                        </sl-badge>
+                    </div>
+                    {% endif %}
+                    {% if cluster.velocity is not None %}
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Velocity:</span>
+                        <sl-badge variant="{% if cluster.velocity >= 0.5 %}success{% elif cluster.velocity >= 0.2 %}warning{% else %}neutral{% endif %}">
+                            {{ cluster.velocity|floatformat:2 }}
+                        </sl-badge>
+                    </div>
+                    {% endif %}
+                    {% if cluster.drift_distance is not None %}
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span>Drift:</span>
+                        <sl-badge variant="{% if cluster.drift_distance >= 0.1 %}warning{% else %}neutral{% endif %}">
+                            {{ cluster.drift_distance|floatformat:3 }}
+                        </sl-badge>
+                    </div>
+                    {% endif %}
+                    {% if cluster.metrics_updated_at %}
+                    <div style="font-size: 0.875rem; color: var(--sl-color-neutral-500);">
+                        Updated: {{ cluster.metrics_updated_at|date:"Y-m-d H:i" }}
+                    </div>
+                    {% endif %}
+                </div>
+                <div slot="footer" style="display: flex; justify-content: flex-end;">
+                    <sl-button variant="default" size="small"
+                        hx-get="{% url 'cluster_detail' workspace.id cluster.id %}"
+                        hx-target="#dialog-body"
+                        hx-swap="innerHTML"
+                        onclick="document.getElementById('resource-dialog').show()">
+                        View Details
+                    </sl-button>
+                </div>
+            </sl-card>
+            {% endfor %}
+        </div>
+    </sl-details>
+    {% endif %}
     {% else %}
     <div class="empty-state">
         <p>No clusters yet. Clusters will be created as documents are processed and assigned.</p>

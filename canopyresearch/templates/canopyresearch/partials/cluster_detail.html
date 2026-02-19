@@ -1,4 +1,4 @@
-<sl-dialog label="Cluster {{ cluster.id }} Details" id="cluster-detail-dialog" style="--width: 800px;">
+<sl-dialog label="Cluster {{ cluster.id }} Details" id="cluster-detail-dialog" style="--width: 1200px; --max-width: 95vw;">
     <sl-card>
         <div slot="header">
             <strong>Cluster {{ cluster.id }}</strong>
@@ -51,29 +51,35 @@
                 <thead>
                     <tr>
                         <th>Title</th>
+                        <th>Similarity</th>
                         <th>Published</th>
                         <th>Assigned</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for document in documents %}
+                    {% for item in document_similarities %}
                     <tr>
                         <td>
-                            <a rel="noopener noreferrer" href="{{ document.url }}" target="_blank">{{ document.title }}</a>
+                            <a rel="noopener noreferrer" href="{{ item.document.url }}" target="_blank">{{ item.document.title }}</a>
                         </td>
                         <td>
-                            {% if document.published_at %}
-                                {{ document.published_at|date:"Y-m-d H:i" }}
+                            {% if item.similarity is not None %}
+                                <sl-badge variant="{% if item.similarity >= 0.7 %}success{% elif item.similarity >= 0.4 %}warning{% else %}neutral{% endif %}" title="Cosine similarity to cluster centroid">
+                                    {{ item.similarity|floatformat:3 }}
+                                </sl-badge>
                             {% else %}
                                 <span style="color: var(--sl-color-neutral-400);">N/A</span>
                             {% endif %}
                         </td>
                         <td>
-                            {% for membership in memberships %}
-                                {% if membership.document_id == document.id %}
-                                    {{ membership.assigned_at|date:"Y-m-d H:i" }}
-                                {% endif %}
-                            {% endfor %}
+                            {% if item.document.published_at %}
+                                {{ item.document.published_at|date:"Y-m-d H:i" }}
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ item.membership.assigned_at|date:"Y-m-d H:i" }}
                         </td>
                     </tr>
                     {% endfor %}

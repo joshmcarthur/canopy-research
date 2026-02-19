@@ -350,14 +350,21 @@ def workspace_core_seed(request, workspace_id):
 def cluster_list(request, workspace_id):
     """List clusters for a workspace. Returns partial for HTMX, full shell otherwise."""
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
-    clusters = workspace.clusters.all().order_by("-updated_at")
+
+    # Get all clusters, ordered by size descending (largest first)
+    all_clusters = workspace.clusters.all().order_by("-size", "-updated_at")
+
+    # Separate clusters with more than one document from single-document clusters
+    multi_doc_clusters = all_clusters.filter(size__gt=1)
+    single_doc_clusters = all_clusters.filter(size=1)
 
     # Check if map view is requested
     view_type = request.GET.get("view", "list")
 
     context = {
         "workspace": workspace,
-        "clusters": clusters,
+        "clusters": multi_doc_clusters,  # Only show multi-doc clusters by default
+        "single_doc_clusters": single_doc_clusters,  # Single-doc clusters for disclosure
         "view_type": view_type,
     }
     if request.headers.get("HX-Request"):
@@ -424,6 +431,8 @@ def cluster_map_json(request, workspace_id):
 @login_required
 def cluster_detail(request, workspace_id, cluster_id):
     """Show cluster details with member documents. HTMX-enabled side panel or modal."""
+    from canopyresearch.services.utils import cosine_similarity
+
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
     cluster = get_object_or_404(
         Cluster.objects.prefetch_related("memberships__document"),
@@ -435,11 +444,32 @@ def cluster_detail(request, workspace_id, cluster_id):
     memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
     documents = [m.document for m in memberships]
 
+    # Compute similarity scores for each document
+    document_similarities = []
+    cluster_centroid = cluster.centroid if cluster.centroid else []
+
+    for membership in memberships:
+        document = membership.document
+        similarity = None
+
+        if document.embedding and cluster_centroid:
+            try:
+                similarity = cosine_similarity(document.embedding, cluster_centroid)
+            except Exception:
+                similarity = None
+
+        document_similarities.append({
+            "document": document,
+            "membership": membership,
+            "similarity": similarity,
+        })
+
     context = {
         "workspace": workspace,
         "cluster": cluster,
         "documents": documents,
         "memberships": memberships,
+        "document_similarities": document_similarities,
     }
     if request.headers.get("HX-Request"):
         return render(request, "canopyresearch/partials/cluster_detail.html", context)
