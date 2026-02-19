@@ -230,7 +230,7 @@ def task_process_workspace(workspace_id: int) -> dict:
 
     for doc in documents:
         try:
-            result = task_process_document(doc.id)
+            result = task_process_document.enqueue(document_id=doc.id).return_value
             if result.get("status") == "success":
                 processed += 1
             else:
