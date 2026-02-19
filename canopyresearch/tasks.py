@@ -8,10 +8,12 @@ import logging
 
 from django_tasks import task
 
-from canopyresearch.models import Document, Source, Workspace
+from canopyresearch.models import Cluster, Document, Source, Workspace
 from canopyresearch.services.clustering import (
     assign_document_to_cluster,
+    recompute_cluster_assignments,
     reconcile_cluster_centroids,
+    update_cluster_metrics,
 )
 from canopyresearch.services.core import seed_workspace_core, update_workspace_core_centroid
 from canopyresearch.services.embeddings import get_embedding_backend
@@ -270,6 +272,76 @@ def task_reconcile_clusters(workspace_id: int = None) -> dict:
         return {"status": "success"}
     except Exception as e:
         logger.exception("Failed to reconcile clusters: %s", e)
+        return {"status": "error", "message": str(e)}
+
+
+@task
+def task_update_cluster_metrics(workspace_id: int = None, cluster_id: int = None) -> dict:
+    """
+    Update metrics for clusters (alignment, velocity, drift).
+
+    Args:
+        workspace_id: Optional workspace ID to limit updates
+        cluster_id: Optional cluster ID to update single cluster
+    """
+    try:
+        if cluster_id:
+            clusters = Cluster.objects.filter(pk=cluster_id)
+        elif workspace_id:
+            clusters = Cluster.objects.filter(workspace_id=workspace_id)
+        else:
+            clusters = Cluster.objects.all()
+    except Cluster.DoesNotExist:
+        logger.error("Cluster %s not found", cluster_id)
+        return {"status": "error", "message": "Cluster not found"}
+
+    updated_count = 0
+    errors = 0
+
+    for cluster in clusters:
+        try:
+            update_cluster_metrics(cluster)
+            updated_count += 1
+        except Exception as e:
+            logger.exception("Failed to update metrics for cluster %s: %s", cluster.id, e)
+            errors += 1
+
+    logger.info("Updated metrics for %d clusters (%d errors)", updated_count, errors)
+    return {
+        "status": "success",
+        "updated": updated_count,
+        "errors": errors,
+    }
+
+
+@task
+def task_recompute_clusters(workspace_id: int, threshold: float = None) -> dict:
+    """
+    Periodic task to recompute cluster assignments.
+
+    Reassigns all documents to clusters and reconciles centroids.
+
+    Args:
+        workspace_id: Workspace ID to recompute clusters for
+        threshold: Optional threshold override for reassignment
+    """
+    try:
+        workspace = Workspace.objects.get(pk=workspace_id)
+    except Workspace.DoesNotExist:
+        logger.error("Workspace %s not found", workspace_id)
+        return {"status": "error", "message": "Workspace not found"}
+
+    try:
+        # Reassign all documents to clusters
+        stats = recompute_cluster_assignments(workspace, threshold=threshold)
+
+        # Reconcile centroids (reuse existing function)
+        reconcile_cluster_centroids(workspace=workspace)
+
+        logger.info("Recomputed clusters for workspace %s: %s", workspace_id, stats)
+        return {"status": "success", **stats}
+    except Exception as e:
+        logger.exception("Failed to recompute clusters for workspace %s: %s", workspace_id, e)
         return {"status": "error", "message": str(e)}
 
 
