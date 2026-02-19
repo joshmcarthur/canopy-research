@@ -177,6 +177,19 @@ class Cluster(models.Model):
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="clusters")
     centroid = models.JSONField(default=list, blank=True)  # Embedding vector
     size = models.IntegerField(default=0)  # Number of documents in cluster
+    alignment = models.FloatField(
+        null=True, blank=True
+    )  # Cached alignment score relative to workspace core
+    velocity = models.FloatField(null=True, blank=True)  # Cached velocity score
+    previous_centroid = models.JSONField(
+        default=list, blank=True
+    )  # Store previous centroid for drift tracking
+    drift_distance = models.FloatField(
+        null=True, blank=True
+    )  # Distance centroid moved since last update
+    metrics_updated_at = models.DateTimeField(
+        null=True, blank=True
+    )  # When metrics were last computed
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -184,6 +197,8 @@ class Cluster(models.Model):
         ordering = ["-updated_at"]
         indexes = [
             models.Index(fields=["workspace", "-updated_at"]),
+            models.Index(fields=["workspace", "alignment"]),
+            models.Index(fields=["workspace", "velocity"]),
         ]
 
     def __str__(self):
