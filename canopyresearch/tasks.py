@@ -28,33 +28,12 @@ from canopyresearch.services.scoring import (
 logger = logging.getLogger(__name__)
 
 
-@task
-def task_ingest_workspace(workspace_id: int) -> dict[str, int]:
-    """Ingest documents from all healthy sources in a workspace."""
-    try:
-        workspace = Workspace.objects.get(pk=workspace_id)
-    except Workspace.DoesNotExist:
-        logger.error("Workspace %s not found", workspace_id)
-        return {"sources_processed": 0, "documents_fetched": 0, "documents_saved": 0, "errors": 0}
-    return ingest_workspace(workspace)
-
-
-@task
-def task_ingest_source(source_id: int) -> tuple[int, int]:
-    """Ingest documents from a single source."""
-    try:
-        source = Source.objects.select_related("workspace").get(pk=source_id)
-    except Source.DoesNotExist:
-        logger.error("Source %s not found", source_id)
-        return (0, 0)
-    return ingest_source(source)
-
-
-@task
-def task_extract_and_embed_document(document_id: int) -> dict:
+# Helper functions (not tasks) that can be called directly
+def _extract_and_embed_document(document_id: int) -> dict:
     """
     Extract clean content and compute embedding for a document.
 
+    Helper function that can be called directly (not a task).
     Returns dict with status and embedding metadata.
     """
     try:
@@ -99,9 +78,12 @@ def task_extract_and_embed_document(document_id: int) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-@task
-def task_assign_cluster(document_id: int) -> dict:
-    """Assign a document to a cluster."""
+def _assign_cluster(document_id: int) -> dict:
+    """
+    Assign a document to a cluster.
+
+    Helper function that can be called directly (not a task).
+    """
     try:
         document = Document.objects.get(pk=document_id)
     except Document.DoesNotExist:
@@ -119,9 +101,12 @@ def task_assign_cluster(document_id: int) -> dict:
         return {"status": "error", "message": str(e)}
 
 
-@task
-def task_score_document(document_id: int) -> dict:
-    """Compute all scores for a document."""
+def _score_document(document_id: int) -> dict:
+    """
+    Compute all scores for a document.
+
+    Helper function that can be called directly (not a task).
+    """
     try:
         document = Document.objects.select_related("workspace").get(pk=document_id)
     except Document.DoesNotExist:
@@ -146,6 +131,83 @@ def task_score_document(document_id: int) -> dict:
     except Exception as e:
         logger.exception("Failed to score document %s: %s", document_id, e)
         return {"status": "error", "message": str(e)}
+
+
+def _process_document_sync(document_id: int) -> dict:
+    """
+    Synchronous version of document processing pipeline.
+
+    Helper function that can be called directly (not a task).
+    Used internally by task_process_workspace.
+    """
+    try:
+        Document.objects.select_related("workspace").get(pk=document_id)
+    except Document.DoesNotExist:
+        logger.error("Document %s not found", document_id)
+        return {"status": "error", "message": "Document not found"}
+
+    results = {}
+
+    # Step 1: Extract and embed
+    embed_result = _extract_and_embed_document(document_id=document_id)
+    results["embedding"] = embed_result
+    if embed_result.get("status") != "success":
+        return {"status": "error", "step": "embedding", "results": results}
+
+    # Step 2: Assign to cluster
+    cluster_result = _assign_cluster(document_id=document_id)
+    results["clustering"] = cluster_result
+
+    # Step 3: Score
+    score_result = _score_document(document_id=document_id)
+    results["scoring"] = score_result
+
+    logger.info("Processed document %s: %s", document_id, results)
+    return {"status": "success", "results": results}
+
+
+@task
+def task_ingest_workspace(workspace_id: int) -> dict[str, int]:
+    """Ingest documents from all healthy sources in a workspace."""
+    try:
+        workspace = Workspace.objects.get(pk=workspace_id)
+    except Workspace.DoesNotExist:
+        logger.error("Workspace %s not found", workspace_id)
+        return {"sources_processed": 0, "documents_fetched": 0, "documents_saved": 0, "errors": 0}
+    return ingest_workspace(workspace)
+
+
+@task
+def task_ingest_source(source_id: int) -> tuple[int, int]:
+    """Ingest documents from a single source."""
+    try:
+        source = Source.objects.select_related("workspace").get(pk=source_id)
+    except Source.DoesNotExist:
+        logger.error("Source %s not found", source_id)
+        return (0, 0)
+    return ingest_source(source)
+
+
+@task
+def task_extract_and_embed_document(document_id: int) -> dict:
+    """
+    Extract clean content and compute embedding for a document.
+
+    Returns dict with status and embedding metadata.
+    """
+    return _extract_and_embed_document(document_id)
+
+
+@task
+def task_assign_cluster(document_id: int) -> dict:
+    """Assign a document to a cluster."""
+    return _assign_cluster(document_id)
+
+
+@task
+def task_score_document(document_id: int) -> dict:
+    """Compute all scores for a document."""
+    return _score_document(document_id)
 
 
 @task
@@ -181,33 +243,7 @@ def task_process_document(document_id: int) -> dict:
 
     This is the main entry point for processing newly ingested documents.
     """
-    try:
-        Document.objects.select_related("workspace").get(pk=document_id)
-    except Document.DoesNotExist:
-        logger.error("Document %s not found", document_id)
-        return {"status": "error", "message": "Document not found"}
-
-    results = {}
-
-    # Step 1: Extract and embed
-    embed_result_obj = task_extract_and_embed_document.enqueue(document_id=document_id)
-    embed_result = embed_result_obj.return_value
-    results["embedding"] = embed_result
-    if embed_result.get("status") != "success":
-        return {"status": "error", "step": "embedding", "results": results}
-
-    # Step 2: Assign to cluster
-    cluster_result_obj = task_assign_cluster.enqueue(document_id=document_id)
-    cluster_result = cluster_result_obj.return_value
-    results["clustering"] = cluster_result
-
-    # Step 3: Score
-    score_result_obj = task_score_document.enqueue(document_id=document_id)
-    score_result = score_result_obj.return_value
-    results["scoring"] = score_result
-
-    logger.info("Processed document %s: %s", document_id, results)
-    return {"status": "success", "results": results}
+    return _process_document_sync(document_id=document_id)
 
 
 @task
@@ -232,7 +268,10 @@ def task_process_workspace(workspace_id: int) -> dict:
 
     for doc in documents:
         try:
-            result = task_process_document.enqueue(document_id=doc.id).return_value
+            # Call the helper function directly for synchronous execution
+            # We can't call task_process_document directly since it's a Task object
+            # Instead, we'll call the underlying logic
+            result = _process_document_sync(document_id=doc.id)
             if result.get("status") == "success":
                 processed += 1
             else:
