@@ -3,6 +3,7 @@ Django admin configuration for canopyresearch.
 """
 
 from django.contrib import admin
+from django.utils.html import format_html
 
 from canopyresearch.models import (
     Cluster,
@@ -14,6 +15,7 @@ from canopyresearch.models import (
     WorkspaceCoreFeedback,
     WorkspaceCoreSeed,
 )
+from canopyresearch.services.clustering import update_cluster_metrics
 
 
 @admin.register(Workspace)
@@ -88,10 +90,74 @@ class IngestionLogAdmin(admin.ModelAdmin):
 class ClusterAdmin(admin.ModelAdmin):
     """Admin interface for Cluster model."""
 
-    list_display = ["id", "workspace", "size", "created_at", "updated_at"]
-    list_filter = ["workspace", "created_at", "updated_at"]
+    list_display = [
+        "id",
+        "workspace",
+        "size",
+        "alignment_display",
+        "velocity_display",
+        "drift_distance_display",
+        "metrics_updated_at",
+        "created_at",
+        "updated_at",
+    ]
+    list_filter = [
+        "workspace",
+        "created_at",
+        "updated_at",
+        "metrics_updated_at",
+    ]
     search_fields = ["workspace__name"]
-    readonly_fields = ["created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at", "metrics_updated_at"]
+    actions = ["recompute_metrics_action"]
+
+    def alignment_display(self, obj):
+        """Display alignment with color coding."""
+        if obj.alignment is None:
+            return format_html('<span style="color: #999;">—</span>')
+        color = "#10b981" if obj.alignment >= 0.7 else "#f59e0b" if obj.alignment >= 0.4 else "#999"
+        return format_html('<span style="color: {};">{:.2f}</span>', color, obj.alignment)
+
+    alignment_display.short_description = "Alignment"
+    alignment_display.admin_order_field = "alignment"
+
+    def velocity_display(self, obj):
+        """Display velocity with color coding."""
+        if obj.velocity is None:
+            return format_html('<span style="color: #999;">—</span>')
+        color = "#10b981" if obj.velocity >= 0.5 else "#f59e0b" if obj.velocity >= 0.2 else "#999"
+        return format_html('<span style="color: {};">{:.2f}</span>', color, obj.velocity)
+
+    velocity_display.short_description = "Velocity"
+    velocity_display.admin_order_field = "velocity"
+
+    def drift_distance_display(self, obj):
+        """Display drift distance with color coding."""
+        if obj.drift_distance is None:
+            return format_html('<span style="color: #999;">—</span>')
+        color = "#f59e0b" if obj.drift_distance >= 0.1 else "#999"
+        return format_html('<span style="color: {};">{:.3f}</span>', color, obj.drift_distance)
+
+    drift_distance_display.short_description = "Drift"
+    drift_distance_display.admin_order_field = "drift_distance"
+
+    @admin.action(description="Recompute metrics for selected clusters")
+    def recompute_metrics_action(self, request, queryset):
+        """Recompute metrics for selected clusters."""
+        updated_count = 0
+        for cluster in queryset:
+            try:
+                update_cluster_metrics(cluster)
+                updated_count += 1
+            except Exception as e:
+                self.message_user(
+                    request, f"Error updating cluster {cluster.id}: {str(e)}", level="ERROR"
+                )
+        self.message_user(
+            request,
+            f"Successfully updated metrics for {updated_count} cluster(s).",
+            level="SUCCESS",
+        )
 
 
 @admin.register(ClusterMembership)
