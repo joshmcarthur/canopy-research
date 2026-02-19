@@ -20,6 +20,11 @@ class ClusterMap extends HTMLElement {
             return;
         }
 
+        // Ensure the custom element itself has height to fill its parent
+        this.style.display = 'block';
+        this.style.width = '100%';
+        this.style.height = '100%';
+
         // Create container for chart
         const container = document.createElement('div');
         container.id = `cluster-map-chart-${this.workspaceId}`;
