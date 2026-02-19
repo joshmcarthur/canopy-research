@@ -7,10 +7,7 @@
     <li>All related data</li>
 </ul>
 <p><strong>This action cannot be undone.</strong></p>
-<form method="post" action="{% url 'workspace_delete' workspace.id %}"
-      hx-post="{% url 'workspace_delete' workspace.id %}"
-      hx-swap="none"
-      hx-headers='{"HX-Request": "true"}'>
+<form method="post" action="{% url 'workspace_delete' workspace.id %}">
     {% csrf_token %}
     <div class="form-actions">
         <sl-button type="submit" variant="danger">Delete Workspace</sl-button>

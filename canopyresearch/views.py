@@ -109,16 +109,6 @@ def workspace_delete(request, workspace_id):
         workspace_name = workspace.name
         workspace.delete()  # CASCADE will delete all sources, documents, clusters, etc.
         messages.success(request, f'Workspace "{workspace_name}" deleted successfully.')
-        if request.headers.get("HX-Request"):
-            # HTMX request - close dialog and redirect to workspace create page
-            workspace_create_url = reverse("workspace_create")
-            response = HttpResponse(
-                "<script>"
-                'document.body.dispatchEvent(new CustomEvent("closeDialog"));'
-                f'window.location.href = "{workspace_create_url}";'
-                "</script>"
-            )
-            return response
         return redirect("workspace_create")
 
     context = {"workspace": workspace}
