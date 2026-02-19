@@ -9,7 +9,7 @@ import logging
 import numpy as np
 from django.db import transaction
 
-from canopyresearch.models import Cluster, ClusterMembership, Document
+from canopyresearch.models import Cluster, ClusterMembership, Document, Workspace
 from canopyresearch.services.utils import cosine_similarity
 
 logger = logging.getLogger(__name__)
@@ -51,6 +51,9 @@ def assign_document_to_cluster(
     """
     Assign a document to the nearest cluster, or create a new cluster if none match.
 
+    Uses select_for_update() to prevent race conditions when multiple tasks
+    try to create clusters concurrently.
+
     Args:
         document: Document to assign
         threshold: Minimum cosine similarity to join existing cluster
@@ -68,28 +71,32 @@ def assign_document_to_cluster(
 
     workspace = document.workspace
 
-    # Find existing clusters in this workspace
-    clusters = Cluster.objects.filter(workspace=workspace).exclude(centroid=[])
-
-    best_cluster = None
-    best_similarity = -1.0
-
-    # Find nearest cluster
-    for cluster in clusters:
-        if (
-            not cluster.centroid
-            or not isinstance(cluster.centroid, list)
-            or len(cluster.centroid) == 0
-        ):
-            continue
-
-        similarity = cosine_similarity(document.embedding, cluster.centroid)
-        if similarity > best_similarity:
-            best_similarity = similarity
-            best_cluster = cluster
-
     # Assign to best cluster if above threshold, otherwise create new
+    # Use select_for_update() to lock the workspace and prevent concurrent cluster creation
     with transaction.atomic():
+        # Lock the workspace to prevent concurrent cluster creation
+        workspace = Workspace.objects.select_for_update().get(pk=workspace.pk)
+
+        # Find existing clusters in this workspace (inside transaction to see latest state)
+        clusters = Cluster.objects.filter(workspace=workspace).exclude(centroid=[])
+
+        best_cluster = None
+        best_similarity = -1.0
+
+        # Find nearest cluster
+        for cluster in clusters:
+            if (
+                not cluster.centroid
+                or not isinstance(cluster.centroid, list)
+                or len(cluster.centroid) == 0
+            ):
+                continue
+
+            similarity = cosine_similarity(document.embedding, cluster.centroid)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_cluster = cluster
+
         if best_cluster and best_similarity >= threshold:
             # Join existing cluster
             ClusterMembership.objects.get_or_create(document=document, cluster=best_cluster)
@@ -105,7 +112,7 @@ def assign_document_to_cluster(
             )
             return best_cluster
         else:
-            # Create new cluster
+            # Create new cluster (workspace is locked, so no concurrent creation possible)
             new_cluster = Cluster.objects.create(
                 workspace=workspace, centroid=document.embedding, size=1
             )
