@@ -100,6 +100,34 @@ def workspace_edit(request, workspace_id):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
+def workspace_delete(request, workspace_id):
+    """Delete a workspace. GET returns confirm dialog partial, POST performs delete."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+
+    if request.method == "POST":
+        workspace_name = workspace.name
+        workspace.delete()  # CASCADE will delete all sources, documents, clusters, etc.
+        messages.success(request, f'Workspace "{workspace_name}" deleted successfully.')
+        if request.headers.get("HX-Request"):
+            # HTMX request - close dialog and redirect to workspace create page
+            workspace_create_url = reverse("workspace_create")
+            response = HttpResponse(
+                "<script>"
+                'document.body.dispatchEvent(new CustomEvent("closeDialog"));'
+                f'window.location.href = "{workspace_create_url}";'
+                "</script>"
+            )
+            return response
+        return redirect("workspace_create")
+
+    context = {"workspace": workspace}
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/workspace_delete_confirm.html", context)
+    return redirect("workspace_detail", workspace_id=workspace.id)
+
+
+@login_required
 def source_list(request, workspace_id):
     """List sources for a workspace. Returns partial for HTMX, full shell otherwise."""
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)

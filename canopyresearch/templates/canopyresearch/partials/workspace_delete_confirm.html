@@ -1,0 +1,25 @@
+<p>Are you sure you want to delete <strong>{{ workspace.name }}</strong>? This will permanently delete:</p>
+<ul>
+    <li>The workspace</li>
+    <li>All sources</li>
+    <li>All documents</li>
+    <li>All clusters</li>
+    <li>All related data</li>
+</ul>
+<p><strong>This action cannot be undone.</strong></p>
+<form method="post" action="{% url 'workspace_delete' workspace.id %}"
+      hx-post="{% url 'workspace_delete' workspace.id %}"
+      hx-swap="none"
+      hx-headers='{"HX-Request": "true"}'>
+    {% csrf_token %}
+    <div class="form-actions">
+        <sl-button type="submit" variant="danger">Delete Workspace</sl-button>
+        <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>
+    </div>
+</form>
+<script>
+(function() {
+  var d = document.getElementById('resource-dialog');
+  if (d) { d.label = 'Delete Workspace'; d.show(); }
+})();
+</script>
