@@ -60,4 +60,24 @@ urlpatterns = [
         views.workspace_ingest,
         name="workspace_ingest",
     ),
+    path(
+        "workspaces/<int:workspace_id>/clusters/",
+        views.cluster_list,
+        name="cluster_list",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/clusters/map.json",
+        views.cluster_map_json,
+        name="cluster_map_json",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/clusters/<int:cluster_id>/",
+        views.cluster_detail,
+        name="cluster_detail",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/clusters/<int:cluster_id>/json/",
+        views.cluster_detail_json,
+        name="cluster_detail_json",
+    ),
 ]

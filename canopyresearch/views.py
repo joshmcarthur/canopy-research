@@ -6,13 +6,13 @@ import json
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from canopyresearch.forms import SourceForm, WorkspaceForm
-from canopyresearch.models import Document, Source, Workspace
+from canopyresearch.models import Cluster, Document, Source, Workspace
 from canopyresearch.services.core import add_core_feedback, seed_workspace_core
 from canopyresearch.tasks import task_ingest_workspace, task_update_workspace_core
 
@@ -326,3 +326,143 @@ def workspace_core_seed(request, workspace_id):
     context["tab_content_template"] = "canopyresearch/partials/core_seed_panel.html"
     context["active_tab"] = "core"
     return render(request, "canopyresearch/workspace_detail.html", context)
+
+
+@login_required
+def cluster_list(request, workspace_id):
+    """List clusters for a workspace. Returns partial for HTMX, full shell otherwise."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    clusters = workspace.clusters.all().order_by("-updated_at")
+
+    # Check if map view is requested
+    view_type = request.GET.get("view", "list")
+
+    context = {
+        "workspace": workspace,
+        "clusters": clusters,
+        "view_type": view_type,
+    }
+    if request.headers.get("HX-Request"):
+        if view_type == "map":
+            return render(request, "canopyresearch/partials/cluster_map.html", context)
+        return render(request, "canopyresearch/partials/clusters_panel.html", context)
+    context["tab_content_template"] = "canopyresearch/partials/clusters_panel.html"
+    context["active_tab"] = "clusters"
+    return render(request, "canopyresearch/workspace_detail.html", context)
+
+
+@login_required
+def cluster_map_json(request, workspace_id):
+    """Return JSON data for cluster map visualization."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    clusters = workspace.clusters.exclude(centroid=[]).order_by("id")
+
+    # Get workspace core centroid
+    core_centroid = workspace.core_centroid.get("vector") if workspace.core_centroid else None
+
+    # Prepare cluster data with positioning
+    cluster_data = []
+    num_clusters = clusters.count()
+
+    for idx, cluster in enumerate(clusters):
+        # Compute position for radar visualization
+        # Distance from center = alignment score (normalized to 0-1)
+        # Angle = evenly distributed around circle
+        alignment = cluster.alignment if cluster.alignment is not None else 0.0
+        distance = max(0.0, min(1.0, alignment))  # Clamp to 0-1
+        angle = (360.0 / max(1, num_clusters)) * idx if num_clusters > 0 else 0.0
+
+        cluster_data.append(
+            {
+                "id": cluster.id,
+                "size": cluster.size,
+                "alignment": alignment,
+                "velocity": cluster.velocity if cluster.velocity is not None else 0.0,
+                "drift_distance": cluster.drift_distance
+                if cluster.drift_distance is not None
+                else None,
+                "centroid": cluster.centroid,
+                "position": {
+                    "angle": angle,
+                    "distance": distance,
+                },
+                "created_at": cluster.created_at.isoformat() if cluster.created_at else None,
+                "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None,
+            }
+        )
+
+    response_data = {
+        "workspace": {
+            "id": workspace.id,
+            "name": workspace.name,
+            "core_centroid": core_centroid,
+        },
+        "clusters": cluster_data,
+    }
+
+    return JsonResponse(response_data)
+
+
+@login_required
+def cluster_detail(request, workspace_id, cluster_id):
+    """Show cluster details with member documents. HTMX-enabled side panel or modal."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    cluster = get_object_or_404(
+        Cluster.objects.prefetch_related("memberships__document"),
+        pk=cluster_id,
+        workspace=workspace,
+    )
+
+    # Get cluster members
+    memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
+    documents = [m.document for m in memberships]
+
+    context = {
+        "workspace": workspace,
+        "cluster": cluster,
+        "documents": documents,
+        "memberships": memberships,
+    }
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/cluster_detail.html", context)
+    return render(request, "canopyresearch/cluster_detail.html", context)
+
+
+@login_required
+def cluster_detail_json(request, workspace_id, cluster_id):
+    """JSON endpoint for cluster details (for AJAX/HTMX)."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    cluster = get_object_or_404(Cluster, pk=cluster_id, workspace=workspace)
+
+    # Get cluster members
+    memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
+    documents = [
+        {
+            "id": m.document.id,
+            "title": m.document.title,
+            "url": m.document.url,
+            "published_at": m.document.published_at.isoformat()
+            if m.document.published_at
+            else None,
+            "assigned_at": m.assigned_at.isoformat() if m.assigned_at else None,
+        }
+        for m in memberships
+    ]
+
+    response_data = {
+        "id": cluster.id,
+        "workspace_id": workspace.id,
+        "size": cluster.size,
+        "alignment": cluster.alignment,
+        "velocity": cluster.velocity,
+        "drift_distance": cluster.drift_distance,
+        "centroid": cluster.centroid,
+        "created_at": cluster.created_at.isoformat() if cluster.created_at else None,
+        "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None,
+        "metrics_updated_at": cluster.metrics_updated_at.isoformat()
+        if cluster.metrics_updated_at
+        else None,
+        "documents": documents,
+    }
+
+    return JsonResponse(response_data)

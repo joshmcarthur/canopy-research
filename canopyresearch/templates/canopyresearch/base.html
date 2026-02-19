@@ -8,7 +8,9 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/themes/light.css" />
     <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.1/cdn/shoelace-autoloader.js"></script>
     <script src="https://unpkg.com/htmx.org@2.0.8/dist/htmx.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.44.0/dist/apexcharts.min.js"></script>
     <link rel="stylesheet" href="{% static 'canopyresearch/theme.css' %}" />
+    <script src="{% static 'canopyresearch/js/cluster-map.js' %}"></script>
 </head>
 <body class="app-shell">
     {% if user.is_authenticated %}

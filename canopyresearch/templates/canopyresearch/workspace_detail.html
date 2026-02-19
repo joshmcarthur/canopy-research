@@ -36,6 +36,13 @@
            hx-swap="innerHTML"
            hx-push-url="true"
            role="tab">Documents</a>
+        <a href="{% url 'cluster_list' workspace.id %}"
+           class="tab-link {% if active_tab == 'clusters' %}active{% endif %}"
+           hx-get="{% url 'cluster_list' workspace.id %}"
+           hx-target="#tab-content"
+           hx-swap="innerHTML"
+           hx-push-url="true"
+           role="tab">Clusters</a>
     </div>
     <div class="tab-nav-right">
         <sl-button id="add-source-button" variant="primary" size="small"

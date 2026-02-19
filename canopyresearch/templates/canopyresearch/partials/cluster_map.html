@@ -1,0 +1,20 @@
+<div id="cluster-map-container">
+    <div class="cluster-map-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <span></span>
+        <div style="display: flex; gap: 0.5rem;">
+            <sl-button variant="default" size="small"
+                hx-get="{% url 'cluster_list' workspace.id %}?view=list"
+                hx-target="#tab-content"
+                hx-swap="innerHTML">
+                <sl-icon slot="prefix" name="list"></sl-icon>
+                List View
+            </sl-button>
+        </div>
+    </div>
+    <div id="cluster-map-wrapper" style="width: 100%; height: 600px; border: 1px solid var(--sl-color-neutral-200); border-radius: var(--sl-border-radius-medium);">
+        <cluster-map workspace-id="{{ workspace.id }}"></cluster-map>
+    </div>
+    <div id="cluster-map-fallback" style="display: none; padding: 2rem; text-align: center;">
+        <p>Unable to load cluster map. <a href="{% url 'cluster_list' workspace.id %}">View as list</a> instead.</p>
+    </div>
+</div>
