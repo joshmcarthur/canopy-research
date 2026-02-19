@@ -222,7 +222,7 @@ def task_process_workspace(workspace_id: int) -> dict:
         return {"status": "error", "message": "Workspace not found"}
 
     # Find documents without embeddings
-    documents = workspace.documents.filter(embedding=[]).exclude(embedding__len__gt=0)
+    documents = workspace.documents.filter(embedding=[])
     total = documents.count()
 
     processed = 0
