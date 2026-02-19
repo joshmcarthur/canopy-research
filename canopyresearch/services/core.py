@@ -182,7 +182,11 @@ def add_core_feedback(
     workspace: Workspace, document: Document, vote: str, user=None
 ) -> WorkspaceCoreFeedback:
     """
-    Add a feedback event (thumbs up/down) and update the core centroid.
+    Add a feedback event (thumbs up/down) for a document.
+
+    Note: This function only creates the feedback record. The workspace core centroid
+    should be updated via the background task `task_update_workspace_core` to avoid
+    blocking the request handler.
 
     Args:
         workspace: Workspace
@@ -208,9 +212,6 @@ def add_core_feedback(
     feedback = WorkspaceCoreFeedback.objects.create(
         workspace=workspace, document=document, vote=vote, user=user
     )
-
-    # Update centroid
-    update_workspace_core_centroid(workspace)
 
     logger.info(
         "Added %s feedback for document %s in workspace %s", vote, document.id, workspace.id

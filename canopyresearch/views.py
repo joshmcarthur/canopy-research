@@ -275,7 +275,7 @@ def document_feedback(request, workspace_id, document_id):
 
     try:
         add_core_feedback(workspace, document, vote, user=request.user)
-        # Trigger background task to update core (in case of batch updates)
+        # Trigger background task to update core centroid
         task_update_workspace_core.enqueue(workspace_id=workspace.id)
 
         if request.headers.get("HX-Request"):

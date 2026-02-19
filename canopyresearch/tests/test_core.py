@@ -68,7 +68,12 @@ class CoreServiceTest(TestCase):
         self.assertEqual(feedback.vote, "up")
         self.assertEqual(feedback.document, doc)
 
-        # Check that centroid was updated
+        # Verify feedback was created (centroid update happens in background task)
+        self.assertEqual(self.workspace.core_feedback.count(), 1)
+
+        # Manually update centroid to verify the feedback is used correctly
+        centroid = update_workspace_core_centroid(self.workspace)
+        self.assertIsNotNone(centroid)
         self.workspace.refresh_from_db()
         self.assertIsNotNone(self.workspace.core_centroid)
 
