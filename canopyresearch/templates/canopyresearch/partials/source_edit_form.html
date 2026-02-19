@@ -39,20 +39,6 @@
         <div class="form-error">{{ form.config_json.errors }}</div>
     {% endif %}
 
-    <sl-select
-        label="Status"
-        name="status"
-        value="{{ form.status.value|default:'healthy' }}"
-        class="form-group"
-    >
-        {% for value, label in form.fields.status.choices %}
-        <sl-option value="{{ value }}">{{ label }}</sl-option>
-        {% endfor %}
-    </sl-select>
-    {% if form.status.errors %}
-        <div class="form-error">{{ form.status.errors }}</div>
-    {% endif %}
-
     <div class="form-actions">
         <sl-button type="submit" variant="primary">Save</sl-button>
         <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>
