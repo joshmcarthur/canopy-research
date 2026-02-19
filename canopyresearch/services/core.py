@@ -62,9 +62,9 @@ def seed_workspace_core(workspace: Workspace, num_seeds: int = 5) -> list[Docume
 
     # Find documents with embeddings in this workspace
     # Filter at the database level for portability and efficiency across databases
-    documents_with_embeddings = workspace.documents.filter(
-        embedding__isnull=False
-    ).exclude(embedding=[])
+    documents_with_embeddings = workspace.documents.filter(embedding__isnull=False).exclude(
+        embedding=[]
+    )
     if not documents_with_embeddings:
         logger.info("No documents with embeddings found for workspace %s", workspace.id)
         return []
