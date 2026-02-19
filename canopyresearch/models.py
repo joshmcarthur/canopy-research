@@ -165,3 +165,116 @@ class IngestionLog(models.Model):
 
     def __str__(self):
         return f"{self.source.name} ingestion at {self.started_at}"
+
+
+class Cluster(models.Model):
+    """
+    Represents a cluster of documents within a workspace.
+
+    Clusters are used for organizing documents and computing novelty/velocity metrics.
+    """
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="clusters")
+    centroid = models.JSONField(default=list, blank=True)  # Embedding vector
+    size = models.IntegerField(default=0)  # Number of documents in cluster
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        indexes = [
+            models.Index(fields=["workspace", "-updated_at"]),
+        ]
+
+    def __str__(self):
+        return f"Cluster {self.id} in {self.workspace.name} (size={self.size})"
+
+
+class ClusterMembership(models.Model):
+    """
+    Join model linking documents to clusters.
+
+    Tracks when documents were assigned to clusters.
+    """
+
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="cluster_memberships"
+    )
+    cluster = models.ForeignKey(Cluster, on_delete=models.CASCADE, related_name="memberships")
+    assigned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [["document", "cluster"]]
+        indexes = [
+            models.Index(fields=["cluster", "-assigned_at"]),
+            models.Index(fields=["document"]),
+        ]
+
+    def __str__(self):
+        return f"{self.document.title} in Cluster {self.cluster.id}"
+
+
+class WorkspaceCoreSeed(models.Model):
+    """
+    Tracks documents that were seeded as initial core documents for a workspace.
+
+    Used for auditing and managing the initial core centroid.
+    """
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="core_seeds")
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="core_seed_entries"
+    )
+    seed_source = models.CharField(
+        max_length=50,
+        choices=[
+            ("auto", "Auto-seeded from workspace description"),
+            ("manual", "Manually selected"),
+        ],
+        default="auto",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [["workspace", "document"]]
+        indexes = [
+            models.Index(fields=["workspace", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Core seed: {self.document.title} in {self.workspace.name}"
+
+
+class WorkspaceCoreFeedback(models.Model):
+    """
+    Tracks user feedback (thumbs up/down) on documents for workspace core.
+
+    Each feedback event updates the workspace core centroid.
+    """
+
+    VOTE_CHOICES = [
+        ("up", "Thumbs Up"),
+        ("down", "Thumbs Down"),
+    ]
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="core_feedback")
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name="core_feedback_entries"
+    )
+    vote = models.CharField(max_length=10, choices=VOTE_CHOICES)
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="core_feedback"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["workspace", "-created_at"]),
+            models.Index(fields=["document", "vote"]),
+        ]
+        # Allow multiple votes per document (user can change their mind)
+        # But we'll typically use the most recent vote
+
+    def __str__(self):
+        return f"{self.get_vote_display()} on {self.document.title} in {self.workspace.name}"

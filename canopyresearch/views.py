@@ -12,8 +12,9 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from canopyresearch.forms import SourceForm, WorkspaceForm
-from canopyresearch.models import Source, Workspace
-from canopyresearch.tasks import task_ingest_workspace
+from canopyresearch.models import Document, Source, Workspace
+from canopyresearch.services.core import add_core_feedback, seed_workspace_core
+from canopyresearch.tasks import task_ingest_workspace, task_update_workspace_core
 
 
 @login_required
@@ -254,4 +255,74 @@ def document_list(request, workspace_id):
         return render(request, "canopyresearch/partials/documents_panel.html", context)
     context["tab_content_template"] = "canopyresearch/partials/documents_panel.html"
     context["active_tab"] = "documents"
+    return render(request, "canopyresearch/workspace_detail.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def document_feedback(request, workspace_id, document_id):
+    """
+    Add thumbs up/down feedback for a document.
+
+    HTMX endpoint that updates core centroid and returns updated document card.
+    """
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    document = get_object_or_404(Document, pk=document_id, workspace=workspace)
+
+    vote = request.POST.get("vote")
+    if vote not in ["up", "down"]:
+        return HttpResponse("Invalid vote", status=400)
+
+    try:
+        add_core_feedback(workspace, document, vote, user=request.user)
+        # Trigger background task to update core centroid
+        task_update_workspace_core.enqueue(workspace_id=workspace.id)
+
+        if request.headers.get("HX-Request"):
+            # Return updated document card
+            context = {"workspace": workspace, "document": document}
+            return render(request, "canopyresearch/partials/document_card.html", context)
+        messages.success(request, f"Feedback recorded: {vote}")
+        return redirect("document_list", workspace_id=workspace.id)
+    except ValueError as e:
+        if request.headers.get("HX-Request"):
+            return HttpResponse(str(e), status=400)
+        messages.error(request, str(e))
+        return redirect("document_list", workspace_id=workspace.id)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def workspace_core_seed(request, workspace_id):
+    """
+    Show core seed candidates and allow manual seeding.
+
+    GET: Show seed candidates
+    POST: Trigger seeding
+    """
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+
+    if request.method == "POST":
+        num_seeds = int(request.POST.get("num_seeds", 5))
+        seeded_docs = seed_workspace_core(workspace, num_seeds=num_seeds)
+        task_update_workspace_core.enqueue(workspace_id=workspace.id)
+        messages.success(request, f"Seeded {len(seeded_docs)} documents as core.")
+        if request.headers.get("HX-Request"):
+            return redirect("workspace_core_seed", workspace_id=workspace.id)
+        return redirect("workspace_detail", workspace_id=workspace.id)
+
+    # GET: Show seed candidates
+    seed_docs = workspace.core_seeds.select_related("document").all()
+    # Get documents with embeddings for potential seeding
+    candidates = workspace.documents.exclude(embedding=[])[:20]
+
+    context = {
+        "workspace": workspace,
+        "seed_docs": seed_docs,
+        "candidates": candidates,
+    }
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/core_seed_panel.html", context)
+    context["tab_content_template"] = "canopyresearch/partials/core_seed_panel.html"
+    context["active_tab"] = "core"
     return render(request, "canopyresearch/workspace_detail.html", context)

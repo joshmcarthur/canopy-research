@@ -46,6 +46,16 @@ urlpatterns = [
         name="document_list",
     ),
     path(
+        "workspaces/<int:workspace_id>/documents/<int:document_id>/feedback/",
+        views.document_feedback,
+        name="document_feedback",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/core/",
+        views.workspace_core_seed,
+        name="workspace_core_seed",
+    ),
+    path(
         "workspaces/<int:workspace_id>/ingest/",
         views.workspace_ingest,
         name="workspace_ingest",

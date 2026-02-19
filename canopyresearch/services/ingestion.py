@@ -64,6 +64,18 @@ def persist_document(workspace, source: Source, data: dict) -> bool:
         },
     )
     DocumentSource.objects.get_or_create(document=doc, source=source)
+
+    # Enqueue processing task for newly created documents
+    if created:
+        from canopyresearch.tasks import task_process_document
+
+        try:
+            task_process_document.enqueue(document_id=doc.id)
+            logger.debug("Enqueued processing task for document %s", doc.id)
+        except Exception as e:
+            # Don't fail ingestion if task enqueue fails
+            logger.warning("Failed to enqueue processing task for document %s: %s", doc.id, e)
+
     return created
 
 
