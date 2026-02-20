@@ -224,6 +224,35 @@ def compute_cluster_metrics(cluster: Cluster) -> dict:
     return metrics
 
 
+def compute_cluster_rank(cluster: Cluster) -> float:
+    """
+    Compute combined rank score for a cluster.
+
+    Formula: rank = 0.65*align_norm + 0.25*velocity + 0.10*(1 - clamp(drift_distance, 0, 1))
+
+    Args:
+        cluster: Cluster to compute rank for
+
+    Returns:
+        Cluster rank score between 0 and 1
+    """
+    # Normalize alignment (-1 to 1) to (0 to 1)
+    alignment = cluster.alignment if cluster.alignment is not None else 0.0
+    align_norm = max(0.0, min(1.0, (alignment + 1.0) / 2.0))
+
+    # Velocity (already 0 to 1)
+    velocity = cluster.velocity if cluster.velocity is not None else 0.0
+
+    # Drift distance (higher drift = lower stability)
+    drift = cluster.drift_distance if cluster.drift_distance is not None else 0.0
+    stability = 1.0 - max(0.0, min(1.0, drift))
+
+    # Weighted combination
+    rank = 0.65 * align_norm + 0.25 * velocity + 0.10 * stability
+
+    return float(max(0.0, min(1.0, rank)))
+
+
 def update_cluster_metrics(cluster: Cluster) -> dict:
     """
     Compute and update cluster metrics in the database.

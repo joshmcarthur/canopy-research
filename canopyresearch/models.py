@@ -53,6 +53,7 @@ class Source(models.Model):
     consecutive_failures = models.IntegerField(default=0)
     auto_pause_threshold = models.IntegerField(default=5)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="healthy")
+    weight = models.FloatField(default=1.0)  # Source weight for relevance scoring (default 1.0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -93,14 +94,24 @@ class Document(models.Model):
     )  # Deduplication (SHA-256)
     ingested_at = models.DateTimeField(null=True, blank=True)
     raw_payload = models.JSONField(null=True, blank=True)  # Optional debugging/traceability
+    # Scoring fields (first-class, queryable)
+    alignment = models.FloatField(null=True, blank=True)  # Cosine similarity to workspace core (-1 to 1)
+    velocity = models.FloatField(null=True, blank=True)  # Recency score (0 to 1)
+    novelty = models.FloatField(null=True, blank=True)  # Distance from other clusters (0 to 1)
+    relevance = models.FloatField(null=True, blank=True)  # Combined relevance score (0 to 1)
+    scored_at = models.DateTimeField(null=True, blank=True)  # When scores were last computed
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-published_at"]
+        ordering = ["-relevance", "-published_at"]  # Default to relevance-first
         indexes = [
             models.Index(fields=["workspace", "-published_at"]),
             models.Index(fields=["workspace", "content_hash"]),
+            models.Index(fields=["workspace", "-relevance"]),
+            models.Index(fields=["workspace", "-alignment"]),
+            models.Index(fields=["workspace", "-velocity"]),
+            models.Index(fields=["workspace", "-novelty"]),
         ]
         constraints = [
             models.UniqueConstraint(

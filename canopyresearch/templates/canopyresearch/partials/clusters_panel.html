@@ -1,6 +1,13 @@
 <div id="clusters-tab-content">
-    <div class="clusters-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <span></span>
+    <div class="clusters-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <span style="font-weight: 500;">Filter:</span>
+            <sl-select placeholder="Filter" value="{{ filter_type|default:'all' }}" size="small" style="width: 150px;"
+                onsl-change="const val = event.target.value; const url = new URL(window.location.href); url.searchParams.set('filter', val); window.location.href = url.toString();">
+                <sl-option value="all">All</sl-option>
+                <sl-option value="on_topic">On-Topic</sl-option>
+            </sl-select>
+        </div>
         <div style="display: flex; gap: 0.5rem;">
             <sl-button variant="default" size="small"
                 hx-get="{% url 'cluster_list' workspace.id %}?view=map"
@@ -14,17 +21,25 @@
     {% if clusters or single_doc_clusters %}
     {% if clusters %}
     <div class="clusters-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
-        {% for cluster in clusters %}
+        {% for cluster_data in clusters %}
+        {% with cluster=cluster_data.cluster rank=cluster_data.rank %}
         <sl-card class="cluster-card">
             <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
                 <strong>Cluster {{ cluster.id }}</strong>
-                <sl-badge variant="neutral">Size: {{ cluster.size }}</sl-badge>
+                <div style="display: flex; gap: 0.25rem; align-items: center;">
+                    <sl-badge variant="{% if rank >= 0.7 %}success{% elif rank >= 0.4 %}warning{% else %}neutral{% endif %}"
+                        title="Cluster rank: {{ rank|floatformat:3 }}&#10;Based on alignment, velocity, and stability">
+                        Rank: {{ rank|floatformat:2 }}
+                    </sl-badge>
+                    <sl-badge variant="neutral">Size: {{ cluster.size }}</sl-badge>
+                </div>
             </div>
             <div class="cluster-metrics" style="display: flex; flex-direction: column; gap: 0.5rem;">
                 {% if cluster.alignment is not None %}
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>Alignment:</span>
-                    <sl-badge variant="{% if cluster.alignment >= 0.7 %}success{% elif cluster.alignment >= 0.4 %}warning{% else %}neutral{% endif %}">
+                    <sl-badge variant="{% if cluster.alignment >= 0.7 %}success{% elif cluster.alignment >= 0.4 %}warning{% else %}neutral{% endif %}"
+                        title="Cosine similarity to workspace core: {{ cluster.alignment|floatformat:3 }}">
                         {{ cluster.alignment|floatformat:2 }}
                     </sl-badge>
                 </div>
@@ -32,7 +47,8 @@
                 {% if cluster.velocity is not None %}
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>Velocity:</span>
-                    <sl-badge variant="{% if cluster.velocity >= 0.5 %}success{% elif cluster.velocity >= 0.2 %}warning{% else %}neutral{% endif %}">
+                    <sl-badge variant="{% if cluster.velocity >= 0.5 %}success{% elif cluster.velocity >= 0.2 %}warning{% else %}neutral{% endif %}"
+                        title="Proportion of recent memberships: {{ cluster.velocity|floatformat:3 }}">
                         {{ cluster.velocity|floatformat:2 }}
                     </sl-badge>
                 </div>
@@ -40,7 +56,8 @@
                 {% if cluster.drift_distance is not None %}
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>Drift:</span>
-                    <sl-badge variant="{% if cluster.drift_distance >= 0.1 %}warning{% else %}neutral{% endif %}">
+                    <sl-badge variant="{% if cluster.drift_distance >= 0.1 %}warning{% else %}neutral{% endif %}"
+                        title="Centroid drift distance: {{ cluster.drift_distance|floatformat:3 }}">
                         {{ cluster.drift_distance|floatformat:3 }}
                     </sl-badge>
                 </div>
@@ -61,6 +78,7 @@
                 </sl-button>
             </div>
         </sl-card>
+        {% endwith %}
         {% endfor %}
     </div>
     {% endif %}
@@ -68,11 +86,18 @@
     {% if single_doc_clusters %}
     <sl-details summary="Single-Document Clusters ({{ single_doc_clusters|length }})" style="margin-top: 1rem;">
         <div class="clusters-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
-            {% for cluster in single_doc_clusters %}
+            {% for cluster_data in single_doc_clusters %}
+            {% with cluster=cluster_data.cluster rank=cluster_data.rank %}
             <sl-card class="cluster-card">
                 <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
                     <strong>Cluster {{ cluster.id }}</strong>
-                    <sl-badge variant="neutral">Size: {{ cluster.size }}</sl-badge>
+                    <div style="display: flex; gap: 0.25rem; align-items: center;">
+                        <sl-badge variant="{% if rank >= 0.7 %}success{% elif rank >= 0.4 %}warning{% else %}neutral{% endif %}"
+                            title="Cluster rank: {{ rank|floatformat:3 }}">
+                            Rank: {{ rank|floatformat:2 }}
+                        </sl-badge>
+                        <sl-badge variant="neutral">Size: {{ cluster.size }}</sl-badge>
+                    </div>
                 </div>
                 <div class="cluster-metrics" style="display: flex; flex-direction: column; gap: 0.5rem;">
                     {% if cluster.alignment is not None %}
@@ -115,6 +140,7 @@
                     </sl-button>
                 </div>
             </sl-card>
+            {% endwith %}
             {% endfor %}
         </div>
     </sl-details>

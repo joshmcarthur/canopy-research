@@ -263,11 +263,38 @@ def workspace_ingest(request, workspace_id):
 def document_list(request, workspace_id):
     """List documents for a workspace. Returns partial for HTMX, full shell otherwise."""
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
-    documents = workspace.documents.prefetch_related("sources").order_by("-published_at")
+    documents = workspace.documents.prefetch_related("sources")
+
+    # Get sort parameter (default to relevance)
+    sort_by = request.GET.get("sort", "relevance")
+    if sort_by == "relevance":
+        documents = documents.order_by("-relevance", "-published_at")
+    elif sort_by == "velocity":
+        documents = documents.order_by("-velocity", "-published_at")
+    elif sort_by == "novelty":
+        documents = documents.order_by("-novelty", "-published_at")
+    elif sort_by == "published":
+        documents = documents.order_by("-published_at")
+    else:
+        documents = documents.order_by("-relevance", "-published_at")
+
+    # Get filter parameter
+    filter_type = request.GET.get("filter", "all")
+    if filter_type == "high_relevance":
+        # Only show documents with relevance >= 0.5
+        documents = documents.filter(relevance__gte=0.5)
+    elif filter_type == "low_relevance":
+        # Only show documents with relevance < 0.5
+        documents = documents.filter(relevance__lt=0.5)
+    elif filter_type == "emerging":
+        # High novelty + decent alignment (exploration mode)
+        documents = documents.filter(novelty__gte=0.6, alignment__gte=0.0)
 
     context = {
         "workspace": workspace,
         "documents": documents,
+        "sort_by": sort_by,
+        "filter_type": filter_type,
     }
     if request.headers.get("HX-Request"):
         return render(request, "canopyresearch/partials/documents_panel.html", context)
@@ -349,14 +376,29 @@ def workspace_core_seed(request, workspace_id):
 @login_required
 def cluster_list(request, workspace_id):
     """List clusters for a workspace. Returns partial for HTMX, full shell otherwise."""
+    from canopyresearch.services.clustering import compute_cluster_rank
+
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
 
-    # Get all clusters, ordered by size descending (largest first)
-    all_clusters = workspace.clusters.all().order_by("-size", "-updated_at")
+    # Get all clusters
+    all_clusters = list(workspace.clusters.all())
+
+    # Compute rank for each cluster and sort by rank
+    clusters_with_rank = [(cluster, compute_cluster_rank(cluster)) for cluster in all_clusters]
+    clusters_with_rank.sort(key=lambda x: x[1], reverse=True)  # Sort by rank descending
+
+    # Get filter parameter
+    filter_type = request.GET.get("filter", "all")
+    if filter_type == "on_topic":
+        # Only show clusters with alignment >= 0.3
+        clusters_with_rank = [
+            (c, r) for c, r in clusters_with_rank if c.alignment is not None and c.alignment >= 0.3
+        ]
 
     # Separate clusters with more than one document from single-document clusters
-    multi_doc_clusters = all_clusters.filter(size__gt=1)
-    single_doc_clusters = all_clusters.filter(size=1)
+    # Pass rank with cluster for template rendering (as dict for easier template access)
+    multi_doc_clusters = [{"cluster": c, "rank": r} for c, r in clusters_with_rank if c.size > 1]
+    single_doc_clusters = [{"cluster": c, "rank": r} for c, r in clusters_with_rank if c.size == 1]
 
     # Check if map view is requested
     view_type = request.GET.get("view", "list")
@@ -366,6 +408,7 @@ def cluster_list(request, workspace_id):
         "clusters": multi_doc_clusters,  # Only show multi-doc clusters by default
         "single_doc_clusters": single_doc_clusters,  # Single-doc clusters for disclosure
         "view_type": view_type,
+        "filter_type": filter_type,
     }
     if request.headers.get("HX-Request"):
         if view_type == "map":
@@ -389,13 +432,19 @@ def cluster_map_json(request, workspace_id):
     cluster_data = []
     num_clusters = clusters.count()
 
+    from canopyresearch.services.clustering import compute_cluster_rank
+
     for idx, cluster in enumerate(clusters):
         # Compute position for radar visualization
         # Distance from center = alignment score (normalized to 0-1)
         # Angle = evenly distributed around circle
         alignment = cluster.alignment if cluster.alignment is not None else 0.0
-        distance = max(0.0, min(1.0, alignment))  # Clamp to 0-1
+        align_norm = max(0.0, min(1.0, (alignment + 1.0) / 2.0))  # Normalize -1..1 to 0..1
+        distance = align_norm
         angle = (360.0 / max(1, num_clusters)) * idx if num_clusters > 0 else 0.0
+
+        # Compute cluster rank
+        rank = compute_cluster_rank(cluster)
 
         cluster_data.append(
             {
@@ -406,6 +455,7 @@ def cluster_map_json(request, workspace_id):
                 "drift_distance": cluster.drift_distance
                 if cluster.drift_distance is not None
                 else None,
+                "rank": rank,
                 "centroid": cluster.centroid,
                 "position": {
                     "angle": angle,
@@ -444,24 +494,35 @@ def cluster_detail(request, workspace_id, cluster_id):
     memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
     documents = [m.document for m in memberships]
 
-    # Compute similarity scores for each document
-    document_similarities = []
+    # Get workspace core centroid
+    core_centroid = workspace.core_centroid.get("vector") if workspace.core_centroid else None
     cluster_centroid = cluster.centroid if cluster.centroid else []
 
+    # Compute similarity scores for each document
+    document_similarities = []
     for membership in memberships:
         document = membership.document
-        similarity = None
+        cluster_similarity = None
+        core_similarity = None
 
-        if document.embedding and cluster_centroid:
-            try:
-                similarity = cosine_similarity(document.embedding, cluster_centroid)
-            except Exception:
-                similarity = None
+        if document.embedding:
+            if cluster_centroid:
+                try:
+                    cluster_similarity = cosine_similarity(document.embedding, cluster_centroid)
+                except Exception:
+                    cluster_similarity = None
+
+            if core_centroid:
+                try:
+                    core_similarity = cosine_similarity(document.embedding, core_centroid)
+                except Exception:
+                    core_similarity = None
 
         document_similarities.append({
             "document": document,
             "membership": membership,
-            "similarity": similarity,
+            "cluster_similarity": cluster_similarity,
+            "core_similarity": core_similarity,
         })
 
     context = {
@@ -482,6 +543,8 @@ def cluster_detail_json(request, workspace_id, cluster_id):
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
     cluster = get_object_or_404(Cluster, pk=cluster_id, workspace=workspace)
 
+    from canopyresearch.services.clustering import compute_cluster_rank
+
     # Get cluster members
     memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
     documents = [
@@ -493,9 +556,15 @@ def cluster_detail_json(request, workspace_id, cluster_id):
             if m.document.published_at
             else None,
             "assigned_at": m.assigned_at.isoformat() if m.assigned_at else None,
+            "relevance": m.document.relevance,
+            "alignment": m.document.alignment,
+            "velocity": m.document.velocity,
+            "novelty": m.document.novelty,
         }
         for m in memberships
     ]
+
+    rank = compute_cluster_rank(cluster)
 
     response_data = {
         "id": cluster.id,
@@ -504,6 +573,7 @@ def cluster_detail_json(request, workspace_id, cluster_id):
         "alignment": cluster.alignment,
         "velocity": cluster.velocity,
         "drift_distance": cluster.drift_distance,
+        "rank": rank,
         "centroid": cluster.centroid,
         "created_at": cluster.created_at.isoformat() if cluster.created_at else None,
         "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None,

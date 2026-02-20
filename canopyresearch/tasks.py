@@ -22,6 +22,7 @@ from canopyresearch.services.ingestion import ingest_source, ingest_workspace
 from canopyresearch.services.scoring import (
     compute_alignment_score,
     compute_novelty_score,
+    compute_relevance_score,
     compute_velocity_score,
 )
 
@@ -103,28 +104,56 @@ def _assign_cluster(document_id: int) -> dict:
 
 def _score_document(document_id: int) -> dict:
     """
-    Compute all scores for a document.
+    Compute all scores for a document and store in first-class fields.
 
     Helper function that can be called directly (not a task).
     """
+    from django.utils import timezone
+
     try:
-        document = Document.objects.select_related("workspace").get(pk=document_id)
+        document = Document.objects.select_related("workspace").prefetch_related(
+            "sources", "cluster_memberships"
+        ).get(pk=document_id)
     except Document.DoesNotExist:
         logger.error("Document %s not found", document_id)
         return {"status": "error", "message": "Document not found"}
 
     try:
-        scores = {
-            "alignment": compute_alignment_score(document),
-            "novelty": compute_novelty_score(document),
-            "velocity": compute_velocity_score(document),
-        }
+        # Compute component scores
+        alignment = compute_alignment_score(document)
+        velocity = compute_velocity_score(document)
+        novelty = compute_novelty_score(document)
 
-        # Store scores in metadata
-        if not document.metadata:
-            document.metadata = {}
-        document.metadata["scores"] = scores
-        document.save(update_fields=["metadata", "updated_at"])
+        # Store component scores in first-class fields
+        document.alignment = alignment
+        document.velocity = velocity
+        document.novelty = novelty
+
+        # Compute combined relevance score
+        relevance = compute_relevance_score(document)
+
+        # Store relevance and timestamp
+        document.relevance = relevance
+        document.scored_at = timezone.now()
+
+        # Save all score fields
+        document.save(
+            update_fields=[
+                "alignment",
+                "velocity",
+                "novelty",
+                "relevance",
+                "scored_at",
+                "updated_at",
+            ]
+        )
+
+        scores = {
+            "alignment": alignment,
+            "velocity": velocity,
+            "novelty": novelty,
+            "relevance": relevance,
+        }
 
         logger.debug("Computed scores for document %s: %s", document_id, scores)
         return {"status": "success", "scores": scores}
@@ -228,6 +257,8 @@ def task_update_workspace_core(workspace_id: int) -> dict:
         # Update centroid from feedback
         centroid = update_workspace_core_centroid(workspace)
         if centroid:
+            # Trigger rescore of workspace documents (alignment depends on core)
+            task_rescore_workspace.enqueue(workspace_id=workspace_id)
             return {"status": "success", "centroid_dim": len(centroid)}
         else:
             return {"status": "warning", "message": "No valid documents for centroid"}
@@ -377,11 +408,119 @@ def task_recompute_clusters(workspace_id: int, threshold: float = None) -> dict:
         # Reconcile centroids (reuse existing function)
         reconcile_cluster_centroids(workspace=workspace)
 
+        # Trigger novelty recompute (novelty depends on cluster assignments)
+        task_recompute_novelty.enqueue(workspace_id=workspace_id)
+
         logger.info("Recomputed clusters for workspace %s: %s", workspace_id, stats)
         return {"status": "success", **stats}
     except Exception as e:
         logger.exception("Failed to recompute clusters for workspace %s: %s", workspace_id, e)
         return {"status": "error", "message": str(e)}
+
+
+@task
+def task_rescore_workspace(workspace_id: int, scope: str = "all") -> dict:
+    """
+    Rescore all documents in a workspace (recompute alignment, velocity, novelty, relevance).
+
+    This should be called after workspace core centroid updates, since alignment depends on core.
+
+    Args:
+        workspace_id: Workspace ID to rescore
+        scope: 'all' to rescore all documents, 'recent' to only rescore documents updated recently
+    """
+    try:
+        workspace = Workspace.objects.get(pk=workspace_id)
+    except Workspace.DoesNotExist:
+        logger.error("Workspace %s not found", workspace_id)
+        return {"status": "error", "message": "Workspace not found"}
+
+    # Get documents with embeddings
+    documents = workspace.documents.exclude(embedding=[]).filter(embedding__isnull=False)
+    if scope == "recent":
+        from django.utils import timezone
+        from datetime import timedelta
+
+        cutoff = timezone.now() - timedelta(days=7)
+        documents = documents.filter(updated_at__gte=cutoff)
+
+    total = documents.count()
+    rescored = 0
+    errors = 0
+
+    for doc in documents:
+        try:
+            result = _score_document(document_id=doc.id)
+            if result.get("status") == "success":
+                rescored += 1
+            else:
+                errors += 1
+        except Exception as e:
+            logger.exception("Error rescoring document %s: %s", doc.id, e)
+            errors += 1
+
+    logger.info(
+        "Rescored workspace %s: %d/%d documents rescored, %d errors",
+        workspace_id,
+        rescored,
+        total,
+        errors,
+    )
+    return {"status": "success", "rescored": rescored, "total": total, "errors": errors}
+
+
+@task
+def task_recompute_novelty(workspace_id: int) -> dict:
+    """
+    Recompute novelty scores for all documents in a workspace.
+
+    This should be called after cluster recomputation, since novelty depends on cluster assignments.
+
+    Args:
+        workspace_id: Workspace ID to recompute novelty for
+    """
+    try:
+        workspace = Workspace.objects.get(pk=workspace_id)
+    except Workspace.DoesNotExist:
+        logger.error("Workspace %s not found", workspace_id)
+        return {"status": "error", "message": "Workspace not found"}
+
+    from django.utils import timezone
+
+    # Get documents with embeddings
+    documents = workspace.documents.exclude(embedding=[]).filter(embedding__isnull=False).prefetch_related(
+        "cluster_memberships"
+    )
+
+    total = documents.count()
+    recomputed = 0
+    errors = 0
+
+    for doc in documents:
+        try:
+            novelty = compute_novelty_score(doc)
+            doc.novelty = novelty
+            doc.scored_at = timezone.now()
+            doc.save(update_fields=["novelty", "scored_at", "updated_at"])
+
+            # Also recompute relevance since novelty changed
+            relevance = compute_relevance_score(doc)
+            doc.relevance = relevance
+            doc.save(update_fields=["relevance", "updated_at"])
+
+            recomputed += 1
+        except Exception as e:
+            logger.exception("Error recomputing novelty for document %s: %s", doc.id, e)
+            errors += 1
+
+    logger.info(
+        "Recomputed novelty for workspace %s: %d/%d documents, %d errors",
+        workspace_id,
+        recomputed,
+        total,
+        errors,
+    )
+    return {"status": "success", "recomputed": recomputed, "total": total, "errors": errors}
 
 
 def cleanup_old_documents(workspace_id: int, days_old: int = 90) -> int:

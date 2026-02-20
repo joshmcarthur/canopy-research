@@ -51,7 +51,9 @@
                 <thead>
                     <tr>
                         <th>Title</th>
-                        <th>Similarity</th>
+                        <th>Relevance</th>
+                        <th>Cluster Sim</th>
+                        <th>Core Sim</th>
                         <th>Published</th>
                         <th>Assigned</th>
                     </tr>
@@ -63,9 +65,30 @@
                             <a rel="noopener noreferrer" href="{{ item.document.url }}" target="_blank">{{ item.document.title }}</a>
                         </td>
                         <td>
-                            {% if item.similarity is not None %}
-                                <sl-badge variant="{% if item.similarity >= 0.7 %}success{% elif item.similarity >= 0.4 %}warning{% else %}neutral{% endif %}" title="Cosine similarity to cluster centroid">
-                                    {{ item.similarity|floatformat:3 }}
+                            {% if item.document.relevance is not None %}
+                                <sl-badge variant="{% if item.document.relevance >= 0.7 %}success{% elif item.document.relevance >= 0.4 %}warning{% else %}neutral{% endif %}"
+                                    title="Combined relevance score">
+                                    {{ item.document.relevance|floatformat:2 }}
+                                </sl-badge>
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.cluster_similarity is not None %}
+                                <sl-badge variant="{% if item.cluster_similarity >= 0.7 %}success{% elif item.cluster_similarity >= 0.4 %}warning{% else %}neutral{% endif %}"
+                                    title="Cosine similarity to cluster centroid">
+                                    {{ item.cluster_similarity|floatformat:3 }}
+                                </sl-badge>
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.core_similarity is not None %}
+                                <sl-badge variant="{% if item.core_similarity >= 0.7 %}success{% elif item.core_similarity >= 0.4 %}warning{% else %}neutral{% endif %}"
+                                    title="Cosine similarity to workspace core">
+                                    {{ item.core_similarity|floatformat:3 }}
                                 </sl-badge>
                             {% else %}
                                 <span style="color: var(--sl-color-neutral-400);">N/A</span>
