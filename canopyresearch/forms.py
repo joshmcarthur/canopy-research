@@ -33,11 +33,10 @@ class SourceForm(forms.ModelForm):
 
     class Meta:
         model = Source
-        fields = ["name", "provider_type", "status"]
+        fields = ["name", "provider_type"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "provider_type": forms.Select(attrs={"class": "form-control"}),
-            "status": forms.Select(attrs={"class": "form-control"}),
         }
 
     def __init__(self, *args, workspace=None, **kwargs):

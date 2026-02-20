@@ -28,6 +28,14 @@
     <div class="form-actions">
         <sl-button type="submit" variant="primary">Save</sl-button>
         <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>
+        <sl-button type="button" variant="danger"
+                   hx-get="{% url 'workspace_delete' workspace.id %}"
+                   hx-target="#dialog-body"
+                   hx-swap="innerHTML"
+                   style="margin-left: auto;">
+            <sl-icon slot="prefix" name="trash"></sl-icon>
+            Delete
+        </sl-button>
     </div>
 </form>
 <script>

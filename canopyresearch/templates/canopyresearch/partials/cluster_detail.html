@@ -1,0 +1,125 @@
+<sl-dialog label="Cluster {{ cluster.id }} Details" id="cluster-detail-dialog" style="--width: 1200px; --max-width: 95vw;">
+    <sl-card>
+        <div slot="header">
+            <strong>Cluster {{ cluster.id }}</strong>
+        </div>
+        <div class="cluster-detail-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div>
+                <div style="font-size: 0.875rem; color: var(--sl-color-neutral-600);">Size</div>
+                <div style="font-size: 1.5rem; font-weight: bold;">{{ cluster.size }}</div>
+            </div>
+            {% if cluster.alignment is not None %}
+            <div>
+                <div style="font-size: 0.875rem; color: var(--sl-color-neutral-600);">Alignment</div>
+                <div style="font-size: 1.5rem; font-weight: bold;">
+                    <sl-badge variant="{% if cluster.alignment >= 0.7 %}success{% elif cluster.alignment >= 0.4 %}warning{% else %}neutral{% endif %}">
+                        {{ cluster.alignment|floatformat:2 }}
+                    </sl-badge>
+                </div>
+            </div>
+            {% endif %}
+            {% if cluster.velocity is not None %}
+            <div>
+                <div style="font-size: 0.875rem; color: var(--sl-color-neutral-600);">Velocity</div>
+                <div style="font-size: 1.5rem; font-weight: bold;">
+                    <sl-badge variant="{% if cluster.velocity >= 0.5 %}success{% elif cluster.velocity >= 0.2 %}warning{% else %}neutral{% endif %}">
+                        {{ cluster.velocity|floatformat:2 }}
+                    </sl-badge>
+                </div>
+            </div>
+            {% endif %}
+            {% if cluster.drift_distance is not None %}
+            <div>
+                <div style="font-size: 0.875rem; color: var(--sl-color-neutral-600);">Drift Distance</div>
+                <div style="font-size: 1.5rem; font-weight: bold;">
+                    <sl-badge variant="{% if cluster.drift_distance >= 0.1 %}warning{% else %}neutral{% endif %}">
+                        {{ cluster.drift_distance|floatformat:3 }}
+                    </sl-badge>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% if cluster.metrics_updated_at %}
+        <div style="margin-bottom: 1.5rem; font-size: 0.875rem; color: var(--sl-color-neutral-500);">
+            Metrics last updated: {{ cluster.metrics_updated_at|date:"Y-m-d H:i:s" }}
+        </div>
+        {% endif %}
+        <div>
+            <h3 style="margin-bottom: 1rem;">Documents ({{ documents|length }})</h3>
+            {% if documents %}
+            <table class="data-grid">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Relevance</th>
+                        <th>Cluster Sim</th>
+                        <th>Core Sim</th>
+                        <th>Published</th>
+                        <th>Assigned</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in document_similarities %}
+                    <tr>
+                        <td>
+                            <a rel="noopener noreferrer" href="{{ item.document.url }}" target="_blank">{{ item.document.title }}</a>
+                        </td>
+                        <td>
+                            {% if item.document.relevance is not None %}
+                                <sl-badge variant="{% if item.document.relevance >= 0.7 %}success{% elif item.document.relevance >= 0.4 %}warning{% else %}neutral{% endif %}"
+                                    title="Combined relevance score">
+                                    {{ item.document.relevance|floatformat:2 }}
+                                </sl-badge>
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.cluster_similarity is not None %}
+                                <sl-badge variant="{% if item.cluster_similarity >= 0.7 %}success{% elif item.cluster_similarity >= 0.4 %}warning{% else %}neutral{% endif %}"
+                                    title="Cosine similarity to cluster centroid">
+                                    {{ item.cluster_similarity|floatformat:3 }}
+                                </sl-badge>
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.core_similarity is not None %}
+                                <sl-badge variant="{% if item.core_similarity >= 0.7 %}success{% elif item.core_similarity >= 0.4 %}warning{% else %}neutral{% endif %}"
+                                    title="Cosine similarity to workspace core">
+                                    {{ item.core_similarity|floatformat:3 }}
+                                </sl-badge>
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.document.published_at %}
+                                {{ item.document.published_at|date:"Y-m-d H:i" }}
+                            {% else %}
+                                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ item.membership.assigned_at|date:"Y-m-d H:i" }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p style="color: var(--sl-color-neutral-500);">No documents in this cluster.</p>
+            {% endif %}
+        </div>
+    </sl-card>
+    <sl-button slot="footer" variant="primary" onclick="this.closest('sl-dialog').hide()">Close</sl-button>
+</sl-dialog>
+<script>
+(function() {
+    const dialog = document.getElementById('cluster-detail-dialog');
+    if (dialog) {
+        dialog.show();
+    }
+})();
+</script>

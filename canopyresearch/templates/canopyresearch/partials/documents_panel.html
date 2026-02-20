@@ -1,9 +1,33 @@
 <div id="documents-tab-content">
+    <div class="documents-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <span style="font-weight: 500;">Sort by:</span>
+            <sl-select placeholder="Sort" value="{{ sort_by|default:'relevance' }}" size="small" style="width: 150px;"
+                onsl-change="const val = event.target.value; const url = new URL(window.location.href); url.searchParams.set('sort', val); window.location.href = url.toString();">
+                <sl-option value="relevance">Relevance</sl-option>
+                <sl-option value="velocity">Velocity</sl-option>
+                <sl-option value="novelty">Novelty</sl-option>
+                <sl-option value="published">Published</sl-option>
+            </sl-select>
+            <span style="font-weight: 500;">Filter:</span>
+            <sl-select placeholder="Filter" value="{{ filter_type|default:'all' }}" size="small" style="width: 150px;"
+                onsl-change="const val = event.target.value; const url = new URL(window.location.href); url.searchParams.set('filter', val); window.location.href = url.toString();">
+                <sl-option value="all">All</sl-option>
+                <sl-option value="high_relevance">High Relevance</sl-option>
+                <sl-option value="low_relevance">Low Relevance</sl-option>
+                <sl-option value="emerging">Emerging</sl-option>
+            </sl-select>
+        </div>
+    </div>
     {% if documents %}
     <table class="data-grid">
         <thead>
             <tr>
                 <th>Title</th>
+                <th>Relevance</th>
+                <th>Alignment</th>
+                <th>Velocity</th>
+                <th>Novelty</th>
                 <th>Source</th>
                 <th>Published</th>
             </tr>
@@ -13,6 +37,46 @@
             <tr>
                 <td>
                     <a rel="noopener noreferrer" href="{{ document.url }}" target="_blank">{{ document.title }}</a>
+                </td>
+                <td>
+                    {% if document.relevance is not None %}
+                        <sl-badge variant="{% if document.relevance >= 0.7 %}success{% elif document.relevance >= 0.4 %}warning{% else %}neutral{% endif %}"
+                            title="Relevance: {{ document.relevance|floatformat:3 }}&#10;Alignment: {{ document.alignment|floatformat:3 }}&#10;Velocity: {{ document.velocity|floatformat:3 }}">
+                            {{ document.relevance|floatformat:2 }}
+                        </sl-badge>
+                    {% else %}
+                        <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if document.alignment is not None %}
+                        <sl-badge variant="{% if document.alignment >= 0.7 %}success{% elif document.alignment >= 0.4 %}warning{% else %}neutral{% endif %}"
+                            title="Cosine similarity to workspace core: {{ document.alignment|floatformat:3 }}">
+                            {{ document.alignment|floatformat:2 }}
+                        </sl-badge>
+                    {% else %}
+                        <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if document.velocity is not None %}
+                        <sl-badge variant="{% if document.velocity >= 0.5 %}success{% elif document.velocity >= 0.2 %}warning{% else %}neutral{% endif %}"
+                            title="Recency score (0-1): {{ document.velocity|floatformat:3 }}">
+                            {{ document.velocity|floatformat:2 }}
+                        </sl-badge>
+                    {% else %}
+                        <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if document.novelty is not None %}
+                        <sl-badge variant="{% if document.novelty >= 0.6 %}success{% elif document.novelty >= 0.3 %}warning{% else %}neutral{% endif %}"
+                            title="Novelty score (distance from other clusters): {{ document.novelty|floatformat:3 }}">
+                            {{ document.novelty|floatformat:2 }}
+                        </sl-badge>
+                    {% else %}
+                        <span style="color: var(--sl-color-neutral-400);">N/A</span>
+                    {% endif %}
                 </td>
                 <td>
                     {% for source in document.sources.all %}

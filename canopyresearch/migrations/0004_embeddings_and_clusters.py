@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('canopyresearch', '0003_phase2_model_enhancements'),
+        ('canopyresearch', '0003_model_enhancements'),
     ]
 
     operations = [

@@ -352,12 +352,26 @@ class HackerNewsProvider(BaseSourceProvider):
     provider_type = "hackernews"
 
     def fetch(self) -> list[dict[str, Any]]:
-        """Fetch raw documents from Hacker News via Algolia API."""
+        """
+        Fetch raw documents from Hacker News via Algolia API.
+
+        Supports filtering options in config:
+        - min_points: Minimum points threshold (e.g., 50)
+        - min_comments: Minimum comments threshold (e.g., 10)
+        - query: Keyword search query (searches title and URL)
+        - listing: "front_page" (default), "new", "ask_hn", "show_hn"
+        - limit: Maximum number of results (default 50, max 100)
+        """
         config = self.source.config or {}
         listing = config.get("listing", "front_page")
         limit = min(config.get("limit", 50), 100)
         tags_override = config.get("tags")
         fetch_full_article = config.get("fetch_full_article", True)
+
+        # Filtering options
+        min_points = config.get("min_points")
+        min_comments = config.get("min_comments")
+        query = config.get("query", "").strip()
 
         if tags_override:
             tags = tags_override[0] if isinstance(tags_override, list) else str(tags_override)
@@ -374,7 +388,26 @@ class HackerNewsProvider(BaseSourceProvider):
             tags = "story"
             endpoint = "search"
 
-        url = f"https://hn.algolia.com/api/v1/{endpoint}?tags={tags}&hitsPerPage={limit}"
+        # Build URL with filters
+        params = [f"tags={tags}", f"hitsPerPage={limit}"]
+
+        # Add keyword query if provided
+        if query:
+            from urllib.parse import quote
+
+            params.append(f"query={quote(query)}")
+
+        # Add numeric filters for points and comments
+        numeric_filters = []
+        if min_points is not None:
+            numeric_filters.append(f"points>={min_points}")
+        if min_comments is not None:
+            numeric_filters.append(f"num_comments>={min_comments}")
+
+        if numeric_filters:
+            params.append(f"numericFilters={','.join(numeric_filters)}")
+
+        url = f"https://hn.algolia.com/api/v1/{endpoint}?{'&'.join(params)}"
 
         try:
             resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)

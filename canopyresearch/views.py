@@ -6,13 +6,13 @@ import json
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from canopyresearch.forms import SourceForm, WorkspaceForm
-from canopyresearch.models import Document, Source, Workspace
+from canopyresearch.models import Cluster, Document, Source, Workspace
 from canopyresearch.services.core import add_core_feedback, seed_workspace_core
 from canopyresearch.tasks import task_ingest_workspace, task_update_workspace_core
 
@@ -96,6 +96,24 @@ def workspace_edit(request, workspace_id):
     }
     if request.headers.get("HX-Request"):
         return render(request, "canopyresearch/partials/workspace_edit_form.html", context)
+    return redirect("workspace_detail", workspace_id=workspace.id)
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def workspace_delete(request, workspace_id):
+    """Delete a workspace. GET returns confirm dialog partial, POST performs delete."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+
+    if request.method == "POST":
+        workspace_name = workspace.name
+        workspace.delete()  # CASCADE will delete all sources, documents, clusters, etc.
+        messages.success(request, f'Workspace "{workspace_name}" deleted successfully.')
+        return redirect("workspace_create")
+
+    context = {"workspace": workspace}
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/workspace_delete_confirm.html", context)
     return redirect("workspace_detail", workspace_id=workspace.id)
 
 
@@ -245,11 +263,38 @@ def workspace_ingest(request, workspace_id):
 def document_list(request, workspace_id):
     """List documents for a workspace. Returns partial for HTMX, full shell otherwise."""
     workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
-    documents = workspace.documents.prefetch_related("sources").order_by("-published_at")
+    documents = workspace.documents.prefetch_related("sources")
+
+    # Get sort parameter (default to relevance)
+    sort_by = request.GET.get("sort", "relevance")
+    if sort_by == "relevance":
+        documents = documents.order_by("-relevance", "-published_at")
+    elif sort_by == "velocity":
+        documents = documents.order_by("-velocity", "-published_at")
+    elif sort_by == "novelty":
+        documents = documents.order_by("-novelty", "-published_at")
+    elif sort_by == "published":
+        documents = documents.order_by("-published_at")
+    else:
+        documents = documents.order_by("-relevance", "-published_at")
+
+    # Get filter parameter
+    filter_type = request.GET.get("filter", "all")
+    if filter_type == "high_relevance":
+        # Only show documents with relevance >= 0.5
+        documents = documents.filter(relevance__gte=0.5)
+    elif filter_type == "low_relevance":
+        # Only show documents with relevance < 0.5
+        documents = documents.filter(relevance__lt=0.5)
+    elif filter_type == "emerging":
+        # High novelty + decent alignment (exploration mode)
+        documents = documents.filter(novelty__gte=0.6, alignment__gte=0.0)
 
     context = {
         "workspace": workspace,
         "documents": documents,
+        "sort_by": sort_by,
+        "filter_type": filter_type,
     }
     if request.headers.get("HX-Request"):
         return render(request, "canopyresearch/partials/documents_panel.html", context)
@@ -326,3 +371,218 @@ def workspace_core_seed(request, workspace_id):
     context["tab_content_template"] = "canopyresearch/partials/core_seed_panel.html"
     context["active_tab"] = "core"
     return render(request, "canopyresearch/workspace_detail.html", context)
+
+
+@login_required
+def cluster_list(request, workspace_id):
+    """List clusters for a workspace. Returns partial for HTMX, full shell otherwise."""
+    from canopyresearch.services.clustering import compute_cluster_rank
+
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+
+    # Get all clusters
+    all_clusters = list(workspace.clusters.all())
+
+    # Compute rank for each cluster and sort by rank
+    clusters_with_rank = [(cluster, compute_cluster_rank(cluster)) for cluster in all_clusters]
+    clusters_with_rank.sort(key=lambda x: x[1], reverse=True)  # Sort by rank descending
+
+    # Get filter parameter
+    filter_type = request.GET.get("filter", "all")
+    if filter_type == "on_topic":
+        # Only show clusters with alignment >= 0.3
+        clusters_with_rank = [
+            (c, r) for c, r in clusters_with_rank if c.alignment is not None and c.alignment >= 0.3
+        ]
+
+    # Separate clusters with more than one document from single-document clusters
+    # Pass rank with cluster for template rendering (as dict for easier template access)
+    multi_doc_clusters = [{"cluster": c, "rank": r} for c, r in clusters_with_rank if c.size > 1]
+    single_doc_clusters = [{"cluster": c, "rank": r} for c, r in clusters_with_rank if c.size == 1]
+
+    # Check if map view is requested
+    view_type = request.GET.get("view", "list")
+
+    context = {
+        "workspace": workspace,
+        "clusters": multi_doc_clusters,  # Only show multi-doc clusters by default
+        "single_doc_clusters": single_doc_clusters,  # Single-doc clusters for disclosure
+        "view_type": view_type,
+        "filter_type": filter_type,
+    }
+    if request.headers.get("HX-Request"):
+        if view_type == "map":
+            return render(request, "canopyresearch/partials/cluster_map.html", context)
+        return render(request, "canopyresearch/partials/clusters_panel.html", context)
+    context["tab_content_template"] = "canopyresearch/partials/clusters_panel.html"
+    context["active_tab"] = "clusters"
+    return render(request, "canopyresearch/workspace_detail.html", context)
+
+
+@login_required
+def cluster_map_json(request, workspace_id):
+    """Return JSON data for cluster map visualization."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    clusters = workspace.clusters.exclude(centroid=[]).order_by("id")
+
+    # Get workspace core centroid
+    core_centroid = workspace.core_centroid.get("vector") if workspace.core_centroid else None
+
+    # Prepare cluster data with positioning
+    cluster_data = []
+    num_clusters = clusters.count()
+
+    from canopyresearch.services.clustering import compute_cluster_rank
+
+    for idx, cluster in enumerate(clusters):
+        # Compute position for radar visualization
+        # Distance from center = alignment score (normalized to 0-1)
+        # Angle = evenly distributed around circle
+        alignment = cluster.alignment if cluster.alignment is not None else 0.0
+        align_norm = max(0.0, min(1.0, (alignment + 1.0) / 2.0))  # Normalize -1..1 to 0..1
+        distance = align_norm
+        angle = (360.0 / max(1, num_clusters)) * idx if num_clusters > 0 else 0.0
+
+        # Compute cluster rank
+        rank = compute_cluster_rank(cluster)
+
+        cluster_data.append(
+            {
+                "id": cluster.id,
+                "size": cluster.size,
+                "alignment": alignment,
+                "velocity": cluster.velocity if cluster.velocity is not None else 0.0,
+                "drift_distance": cluster.drift_distance
+                if cluster.drift_distance is not None
+                else None,
+                "rank": rank,
+                "centroid": cluster.centroid,
+                "position": {
+                    "angle": angle,
+                    "distance": distance,
+                },
+                "created_at": cluster.created_at.isoformat() if cluster.created_at else None,
+                "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None,
+            }
+        )
+
+    response_data = {
+        "workspace": {
+            "id": workspace.id,
+            "name": workspace.name,
+            "core_centroid": core_centroid,
+        },
+        "clusters": cluster_data,
+    }
+
+    return JsonResponse(response_data)
+
+
+@login_required
+def cluster_detail(request, workspace_id, cluster_id):
+    """Show cluster details with member documents. HTMX-enabled side panel or modal."""
+    from canopyresearch.services.utils import cosine_similarity
+
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    cluster = get_object_or_404(
+        Cluster.objects.prefetch_related("memberships__document"),
+        pk=cluster_id,
+        workspace=workspace,
+    )
+
+    # Get cluster members
+    memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
+    documents = [m.document for m in memberships]
+
+    # Get workspace core centroid
+    core_centroid = workspace.core_centroid.get("vector") if workspace.core_centroid else None
+    cluster_centroid = cluster.centroid if cluster.centroid else []
+
+    # Compute similarity scores for each document
+    document_similarities = []
+    for membership in memberships:
+        document = membership.document
+        cluster_similarity = None
+        core_similarity = None
+
+        if document.embedding:
+            if cluster_centroid:
+                try:
+                    cluster_similarity = cosine_similarity(document.embedding, cluster_centroid)
+                except Exception:
+                    cluster_similarity = None
+
+            if core_centroid:
+                try:
+                    core_similarity = cosine_similarity(document.embedding, core_centroid)
+                except Exception:
+                    core_similarity = None
+
+        document_similarities.append(
+            {
+                "document": document,
+                "membership": membership,
+                "cluster_similarity": cluster_similarity,
+                "core_similarity": core_similarity,
+            }
+        )
+
+    context = {
+        "workspace": workspace,
+        "cluster": cluster,
+        "documents": documents,
+        "memberships": memberships,
+        "document_similarities": document_similarities,
+    }
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/cluster_detail.html", context)
+    return render(request, "canopyresearch/cluster_detail.html", context)
+
+
+@login_required
+def cluster_detail_json(request, workspace_id, cluster_id):
+    """JSON endpoint for cluster details (for AJAX/HTMX)."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    cluster = get_object_or_404(Cluster, pk=cluster_id, workspace=workspace)
+
+    from canopyresearch.services.clustering import compute_cluster_rank
+
+    # Get cluster members
+    memberships = cluster.memberships.select_related("document").order_by("-assigned_at")
+    documents = [
+        {
+            "id": m.document.id,
+            "title": m.document.title,
+            "url": m.document.url,
+            "published_at": m.document.published_at.isoformat()
+            if m.document.published_at
+            else None,
+            "assigned_at": m.assigned_at.isoformat() if m.assigned_at else None,
+            "relevance": m.document.relevance,
+            "alignment": m.document.alignment,
+            "velocity": m.document.velocity,
+            "novelty": m.document.novelty,
+        }
+        for m in memberships
+    ]
+
+    rank = compute_cluster_rank(cluster)
+
+    response_data = {
+        "id": cluster.id,
+        "workspace_id": workspace.id,
+        "size": cluster.size,
+        "alignment": cluster.alignment,
+        "velocity": cluster.velocity,
+        "drift_distance": cluster.drift_distance,
+        "rank": rank,
+        "centroid": cluster.centroid,
+        "created_at": cluster.created_at.isoformat() if cluster.created_at else None,
+        "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None,
+        "metrics_updated_at": cluster.metrics_updated_at.isoformat()
+        if cluster.metrics_updated_at
+        else None,
+        "documents": documents,
+    }
+
+    return JsonResponse(response_data)
