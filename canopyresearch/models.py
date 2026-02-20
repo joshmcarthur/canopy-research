@@ -95,7 +95,9 @@ class Document(models.Model):
     ingested_at = models.DateTimeField(null=True, blank=True)
     raw_payload = models.JSONField(null=True, blank=True)  # Optional debugging/traceability
     # Scoring fields (first-class, queryable)
-    alignment = models.FloatField(null=True, blank=True)  # Cosine similarity to workspace core (-1 to 1)
+    alignment = models.FloatField(
+        null=True, blank=True
+    )  # Cosine similarity to workspace core (-1 to 1)
     velocity = models.FloatField(null=True, blank=True)  # Recency score (0 to 1)
     novelty = models.FloatField(null=True, blank=True)  # Distance from other clusters (0 to 1)
     relevance = models.FloatField(null=True, blank=True)  # Combined relevance score (0 to 1)

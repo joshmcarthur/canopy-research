@@ -518,12 +518,14 @@ def cluster_detail(request, workspace_id, cluster_id):
                 except Exception:
                     core_similarity = None
 
-        document_similarities.append({
-            "document": document,
-            "membership": membership,
-            "cluster_similarity": cluster_similarity,
-            "core_similarity": core_similarity,
-        })
+        document_similarities.append(
+            {
+                "document": document,
+                "membership": membership,
+                "cluster_similarity": cluster_similarity,
+                "core_similarity": core_similarity,
+            }
+        )
 
     context = {
         "workspace": workspace,

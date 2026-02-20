@@ -119,9 +119,7 @@ def compute_relevance_score(
     bias = feedback_bias * source_weight
 
     # Compute weighted relevance
-    relevance = (
-        alignment_weight * align_norm + velocity_weight * velocity + bias_weight * bias
-    )
+    relevance = alignment_weight * align_norm + velocity_weight * velocity + bias_weight * bias
 
     # Clamp to 0-1
     relevance = max(0.0, min(1.0, relevance))

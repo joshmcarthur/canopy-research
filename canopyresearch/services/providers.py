@@ -394,6 +394,7 @@ class HackerNewsProvider(BaseSourceProvider):
         # Add keyword query if provided
         if query:
             from urllib.parse import quote
+
             params.append(f"query={quote(query)}")
 
         # Add numeric filters for points and comments

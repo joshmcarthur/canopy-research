@@ -111,9 +111,11 @@ def _score_document(document_id: int) -> dict:
     from django.utils import timezone
 
     try:
-        document = Document.objects.select_related("workspace").prefetch_related(
-            "sources", "cluster_memberships"
-        ).get(pk=document_id)
+        document = (
+            Document.objects.select_related("workspace")
+            .prefetch_related("sources", "cluster_memberships")
+            .get(pk=document_id)
+        )
     except Document.DoesNotExist:
         logger.error("Document %s not found", document_id)
         return {"status": "error", "message": "Document not found"}
@@ -438,8 +440,9 @@ def task_rescore_workspace(workspace_id: int, scope: str = "all") -> dict:
     # Get documents with embeddings
     documents = workspace.documents.exclude(embedding=[]).filter(embedding__isnull=False)
     if scope == "recent":
-        from django.utils import timezone
         from datetime import timedelta
+
+        from django.utils import timezone
 
         cutoff = timezone.now() - timedelta(days=7)
         documents = documents.filter(updated_at__gte=cutoff)
@@ -488,8 +491,10 @@ def task_recompute_novelty(workspace_id: int) -> dict:
     from django.utils import timezone
 
     # Get documents with embeddings
-    documents = workspace.documents.exclude(embedding=[]).filter(embedding__isnull=False).prefetch_related(
-        "cluster_memberships"
+    documents = (
+        workspace.documents.exclude(embedding=[])
+        .filter(embedding__isnull=False)
+        .prefetch_related("cluster_memberships")
     )
 
     total = documents.count()
