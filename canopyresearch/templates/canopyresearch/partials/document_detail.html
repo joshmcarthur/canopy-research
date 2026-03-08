@@ -1,0 +1,95 @@
+<div id="document-detail">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 0.5rem;">
+        <div>
+            <h3 style="margin: 0 0 0.25rem;">{{ document.title }}</h3>
+            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; color: var(--sl-color-neutral-500); font-size: 0.875rem;">
+                {% if document.published_at %}
+                    <span>{{ document.published_at|date:"Y-m-d H:i" }}</span>
+                {% endif %}
+                {% for source in document.sources.all %}
+                    <sl-badge variant="neutral">{{ source.name }}</sl-badge>
+                {% endfor %}
+            </div>
+        </div>
+        <sl-button href="{{ document.url }}" target="_blank" rel="noopener noreferrer" variant="default" size="small">
+            <sl-icon slot="prefix" name="box-arrow-up-right"></sl-icon>
+            Read original
+        </sl-button>
+    </div>
+
+    {% if document.summary %}
+    <p style="margin: 1rem 0; line-height: 1.6; color: var(--sl-color-neutral-800);">{{ document.summary }}</p>
+    {% else %}
+    <p style="margin: 1rem 0; color: var(--sl-color-neutral-400); font-style: italic;">No summary available.</p>
+    {% endif %}
+
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.25rem 0; padding: 1rem; background: var(--sl-color-neutral-50); border-radius: var(--sl-border-radius-medium);">
+        <div style="text-align: center; min-width: 80px;">
+            {% if document.relevance is not None %}
+                <sl-badge variant="{% if document.relevance >= 0.7 %}success{% elif document.relevance >= 0.4 %}warning{% else %}neutral{% endif %}" style="display: block; margin-bottom: 0.25rem;">
+                    {{ document.relevance|floatformat:2 }}
+                </sl-badge>
+            {% else %}
+                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+            {% endif %}
+            <div style="font-size: 0.75rem; color: var(--sl-color-neutral-500);">Relevance</div>
+            <div style="font-size: 0.7rem; color: var(--sl-color-neutral-400);">Combined score</div>
+        </div>
+        <div style="text-align: center; min-width: 80px;">
+            {% if document.alignment is not None %}
+                <sl-badge variant="{% if document.alignment >= 0.7 %}success{% elif document.alignment >= 0.4 %}warning{% else %}neutral{% endif %}" style="display: block; margin-bottom: 0.25rem;">
+                    {{ document.alignment|floatformat:2 }}
+                </sl-badge>
+            {% else %}
+                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+            {% endif %}
+            <div style="font-size: 0.75rem; color: var(--sl-color-neutral-500);">Alignment</div>
+            <div style="font-size: 0.7rem; color: var(--sl-color-neutral-400);">Similarity to workspace core</div>
+        </div>
+        <div style="text-align: center; min-width: 80px;">
+            {% if document.velocity is not None %}
+                <sl-badge variant="{% if document.velocity >= 0.5 %}success{% elif document.velocity >= 0.2 %}warning{% else %}neutral{% endif %}" style="display: block; margin-bottom: 0.25rem;">
+                    {{ document.velocity|floatformat:2 }}
+                </sl-badge>
+            {% else %}
+                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+            {% endif %}
+            <div style="font-size: 0.75rem; color: var(--sl-color-neutral-500);">Velocity</div>
+            <div style="font-size: 0.7rem; color: var(--sl-color-neutral-400);">Recency score</div>
+        </div>
+        <div style="text-align: center; min-width: 80px;">
+            {% if document.novelty is not None %}
+                <sl-badge variant="{% if document.novelty >= 0.6 %}success{% elif document.novelty >= 0.3 %}warning{% else %}neutral{% endif %}" style="display: block; margin-bottom: 0.25rem;">
+                    {{ document.novelty|floatformat:2 }}
+                </sl-badge>
+            {% else %}
+                <span style="color: var(--sl-color-neutral-400);">N/A</span>
+            {% endif %}
+            <div style="font-size: 0.75rem; color: var(--sl-color-neutral-500);">Novelty</div>
+            <div style="font-size: 0.7rem; color: var(--sl-color-neutral-400);">Distance from clusters</div>
+        </div>
+        {% include "canopyresearch/partials/document_feedback.html" %}
+    </div>
+
+    {% if extracted_links %}
+    <details style="margin: 1rem 0;">
+        <summary style="cursor: pointer; font-weight: 500; padding: 0.5rem 0; user-select: none;">
+            Extracted links ({{ extracted_links|length }})
+        </summary>
+        <ul style="margin: 0.5rem 0 0; padding-left: 1.25rem; line-height: 1.8;">
+            {% for link in extracted_links %}
+            <li>
+                <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.text|truncatechars:100 }}</a>
+            </li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    <details style="margin: 1rem 0;">
+        <summary style="cursor: pointer; font-weight: 500; padding: 0.5rem 0; user-select: none;">
+            Article content
+        </summary>
+        <pre style="margin: 0.5rem 0 0; white-space: pre-wrap; font-family: inherit; font-size: 0.875rem; line-height: 1.6; color: var(--sl-color-neutral-700); max-height: 400px; overflow-y: auto; padding: 0.75rem; background: var(--sl-color-neutral-50); border-radius: var(--sl-border-radius-medium);">{{ document.content }}</pre>
+    </details>
+</div>

@@ -36,7 +36,13 @@
             {% for document in documents %}
             <tr>
                 <td>
-                    <a rel="noopener noreferrer" href="{{ document.url }}" target="_blank">{{ document.title }}</a>
+                    <a href="{% url 'document_detail' workspace.id document.id %}">{{ document.title }}</a>
+                    {% if document.summary %}
+                    <div style="font-size: 0.8rem; color: var(--sl-color-neutral-500); margin-top: 0.2rem;">{{ document.summary|truncatechars:160 }}</div>
+                    {% endif %}
+                    <a href="{{ document.url }}" target="_blank" rel="noopener noreferrer" title="Open original" style="margin-left: 0.4rem; color: var(--sl-color-neutral-400); font-size: 0.8rem; vertical-align: middle;">
+                        <sl-icon name="box-arrow-up-right"></sl-icon>
+                    </a>
                 </td>
                 <td>
                     {% if document.relevance is not None %}

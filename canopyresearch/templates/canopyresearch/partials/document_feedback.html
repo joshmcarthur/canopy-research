@@ -1,0 +1,36 @@
+<div id="document-feedback" style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto;">
+    {% if existing_vote == "up" %}
+        <sl-badge variant="success">
+            <sl-icon slot="prefix" name="hand-thumbs-up-fill"></sl-icon>
+            Marked as relevant
+        </sl-badge>
+    {% elif existing_vote == "down" %}
+        <sl-badge variant="neutral">
+            <sl-icon slot="prefix" name="hand-thumbs-down-fill"></sl-icon>
+            Marked as not relevant
+        </sl-badge>
+    {% else %}
+        <form hx-post="{% url 'document_feedback' workspace.id document.id %}"
+              hx-target="#document-feedback"
+              hx-swap="outerHTML"
+              style="display: inline;">
+            {% csrf_token %}
+            <input type="hidden" name="vote" value="up">
+            <sl-button type="submit" variant="default" size="small" title="Mark as relevant to workspace core">
+                <sl-icon slot="prefix" name="hand-thumbs-up"></sl-icon>
+                Relevant
+            </sl-button>
+        </form>
+        <form hx-post="{% url 'document_feedback' workspace.id document.id %}"
+              hx-target="#document-feedback"
+              hx-swap="outerHTML"
+              style="display: inline;">
+            {% csrf_token %}
+            <input type="hidden" name="vote" value="down">
+            <sl-button type="submit" variant="default" size="small" title="Mark as not relevant to workspace core">
+                <sl-icon slot="prefix" name="hand-thumbs-down"></sl-icon>
+                Not relevant
+            </sl-button>
+        </form>
+    {% endif %}
+</div>

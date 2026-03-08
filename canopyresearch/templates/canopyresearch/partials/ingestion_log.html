@@ -1,0 +1,50 @@
+<div id="ingestion-log"
+    {% if running %}
+    hx-get="{% url 'ingestion_log' workspace.id %}"
+    hx-trigger="every 3s"
+    hx-swap="outerHTML"
+    {% endif %}>
+
+    <h3 style="margin: 1.5rem 0 0.75rem; font-size: 1rem;">Ingestion Log</h3>
+
+    {% if logs %}
+    <table class="data-grid" style="font-size: 0.8125rem;">
+        <thead>
+            <tr>
+                <th>Source</th>
+                <th>Started</th>
+                <th>Duration</th>
+                <th>Found / New</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in logs %}
+            <tr>
+                <td>{{ log.source.name|truncatewords:5 }}</td>
+                <td style="white-space: nowrap;">{{ log.started_at|date:"d M H:i:s" }}</td>
+                <td>
+                    {% if log.finished_at %}
+                        {{ log.started_at|timesince:log.finished_at }}
+                    {% else %}
+                        <sl-spinner style="font-size: 0.75rem;"></sl-spinner> running
+                    {% endif %}
+                </td>
+                <td>{{ log.documents_found }} / {{ log.documents_created }}</td>
+                <td>
+                    {% if not log.finished_at %}
+                        <sl-badge variant="warning">running</sl-badge>
+                    {% elif log.status == 'success' %}
+                        <sl-badge variant="success">ok</sl-badge>
+                    {% else %}
+                        <sl-badge variant="danger" title="{{ log.error_message }}">error</sl-badge>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="color: var(--sl-color-neutral-400); font-size: 0.875rem;">No ingestion runs yet.</p>
+    {% endif %}
+</div>
