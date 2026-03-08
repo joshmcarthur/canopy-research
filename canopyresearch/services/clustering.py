@@ -19,6 +19,9 @@ from canopyresearch.services.utils import cosine_similarity
 
 logger = logging.getLogger(__name__)
 
+LABEL_CLUSTER_MODEL_ENV = "TERM_EXTRACTION_MODEL"
+LABEL_CLUSTER_DEFAULT_MODEL = "gpt-4o-mini"
+
 # Default similarity threshold for cluster assignment (cosine similarity)
 DEFAULT_CLUSTER_THRESHOLD = 0.7
 
@@ -339,3 +342,86 @@ def recompute_cluster_assignments(workspace: Workspace, threshold: float | None 
 
     logger.info("Recomputed cluster assignments for workspace %s: %s", workspace.id, stats)
     return stats
+
+
+def label_cluster(cluster: Cluster) -> str | None:
+    """
+    Generate a short descriptive label for a cluster using an LLM.
+
+    Sends up to 10 document titles from the cluster to the configured
+    OpenAI-compatible chat API and asks for a 3-7 word label.
+
+    Uses the same OPENAI_API_KEY / OPENAI_API_BASE / TERM_EXTRACTION_MODEL
+    environment variables as term extraction.
+
+    Returns the label string, or None if the LLM is unavailable or the call fails.
+    The label is saved to cluster.label and the cluster is persisted.
+    """
+    import json
+    import os
+
+    titles = list(
+        ClusterMembership.objects.filter(cluster=cluster)
+        .select_related("document")
+        .order_by("-assigned_at")
+        .values_list("document__title", flat=True)[:10]
+    )
+
+    if not titles:
+        return None
+
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        logger.debug("OPENAI_API_KEY not set, skipping cluster labeling")
+        return None
+
+    try:
+        import openai
+    except ImportError:
+        logger.warning("openai package not installed, skipping cluster labeling")
+        return None
+
+    api_base = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1")
+    model_name = os.environ.get(LABEL_CLUSTER_MODEL_ENV, LABEL_CLUSTER_DEFAULT_MODEL)
+
+    titles_text = "\n".join(f"- {t}" for t in titles)
+    prompt = (
+        "Given the following document titles from a content cluster, generate a short "
+        "descriptive label (3-7 words) that captures the common theme.\n\n"
+        f"Titles:\n{titles_text}\n\n"
+        'Return ONLY a JSON string, no markdown, no explanation. Example: "machine learning infrastructure"'
+    )
+
+    try:
+        client = openai.OpenAI(api_key=api_key, base_url=api_base)
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant that generates concise topic labels. Always return a plain JSON string.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.3,
+            max_tokens=50,
+        )
+        content = response.choices[0].message.content.strip()
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            # Some models return {"label": "..."} or {"topic": "..."}
+            label = next(iter(parsed.values()), None)
+            if not isinstance(label, str):
+                raise ValueError(f"Could not extract string from dict: {parsed}")
+        elif isinstance(parsed, str):
+            label = parsed
+        else:
+            raise ValueError(f"Unexpected response type: {type(parsed)}")
+        label = label.strip()[:200]
+        cluster.label = label
+        cluster.save(update_fields=["label", "updated_at"])
+        logger.info("Labelled cluster %s: %r", cluster.id, label)
+        return label
+    except Exception as e:
+        logger.warning("Failed to label cluster %s: %s", cluster.id, e)
+        return None
