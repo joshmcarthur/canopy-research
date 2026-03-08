@@ -6,10 +6,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # No command = entrypoint defaults to bin/start (production)
-    ports:
-      - "8080:8080"
-      - "8443:8443"
     environment:
       - CANOPY_DOMAIN=${CANOPY_DOMAIN:-}
       - DEBUG=${DEBUG:-False}
@@ -17,3 +13,30 @@ services:
       - SKIP_SEEDS=${SKIP_SEEDS:-true}
       # Set SKIP_MIGRATIONS=true to skip migrations
       - SKIP_MIGRATIONS=${SKIP_MIGRATIONS:-false}
+      # OpenAI-compatible API — used for embeddings and term extraction
+      # Point OPENAI_API_BASE at a local server (Ollama, LM Studio, vLLM) to run offline
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.openai.com/v1}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - TERM_EXTRACTION_MODEL=${TERM_EXTRACTION_MODEL:-gpt-4o-mini}
+    ports:
+      - "${PORT:-8000}:8000"
+
+  # Scheduled ingestion — runs ingest_due every 30 minutes.
+  # Each workspace controls its own interval via ingestion_interval_hours.
+  # Remove or comment out this service to disable scheduled ingestion.
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: >
+      sh -c 'while true; do
+        python manage.py ingest_due;
+        sleep 1800;
+      done'
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.openai.com/v1}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - TERM_EXTRACTION_MODEL=${TERM_EXTRACTION_MODEL:-gpt-4o-mini}
+      - DJANGO_SETTINGS_MODULE=canopyresearch.settings

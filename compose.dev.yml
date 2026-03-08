@@ -33,5 +33,9 @@ services:
       - DEBUG=True
       - SKIP_MIGRATIONS=true
       - SKIP_SEEDS=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE=${OPENAI_API_BASE:-https://api.openai.com/v1}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - TERM_EXTRACTION_MODEL=${TERM_EXTRACTION_MODEL:-gpt-4o-mini}
     depends_on:
       - app
