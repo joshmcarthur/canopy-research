@@ -243,10 +243,8 @@ class DocumentProcessingTasksTest(TestCase):
         self.workspace.refresh_from_db()
         self.assertIsNotNone(self.workspace.core_centroid)
 
-    @patch("canopyresearch.tasks.task_extract_and_embed_document")
-    @patch("canopyresearch.tasks.task_assign_cluster")
-    @patch("canopyresearch.tasks.task_score_document")
-    def test_task_process_document(self, mock_score, mock_cluster, mock_embed):
+    @patch("canopyresearch.tasks.get_embedding_backend")
+    def test_task_process_document(self, mock_get_backend):
         """Test full document processing pipeline."""
         doc = Document.objects.create(
             workspace=self.workspace,
@@ -255,18 +253,11 @@ class DocumentProcessingTasksTest(TestCase):
             content="Test content",
         )
 
-        # Create mock TaskResult objects
-        mock_embed_result = MagicMock()
-        mock_embed_result.return_value = {"status": "success"}
-        mock_embed.enqueue = MagicMock(return_value=mock_embed_result)
-
-        mock_cluster_result = MagicMock()
-        mock_cluster_result.return_value = {"status": "success", "cluster_id": 1}
-        mock_cluster.enqueue = MagicMock(return_value=mock_cluster_result)
-
-        mock_score_result = MagicMock()
-        mock_score_result.return_value = {"status": "success", "scores": {}}
-        mock_score.enqueue = MagicMock(return_value=mock_score_result)
+        mock_backend = MagicMock()
+        mock_backend.embed_texts.return_value = [[0.1] * 384]
+        mock_backend.model_name = "test-model"
+        mock_backend.embedding_dim = 384
+        mock_get_backend.return_value = mock_backend
 
         result = task_process_document.enqueue(document_id=doc.id)
         self.assertEqual(result.return_value["status"], "success")

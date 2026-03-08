@@ -11,13 +11,14 @@ from django_tasks import task
 from canopyresearch.models import Cluster, Document, Source, Workspace
 from canopyresearch.services.clustering import (
     assign_document_to_cluster,
+    label_cluster,
     recompute_cluster_assignments,
     reconcile_cluster_centroids,
     update_cluster_metrics,
 )
 from canopyresearch.services.core import seed_workspace_core, update_workspace_core_centroid
 from canopyresearch.services.embeddings import get_embedding_backend
-from canopyresearch.services.extraction import extract_and_clean_content
+from canopyresearch.services.extraction import extract_and_clean_content, extract_links_from_url
 from canopyresearch.services.ingestion import ingest_source, ingest_workspace
 from canopyresearch.services.scoring import (
     compute_alignment_score,
@@ -25,6 +26,7 @@ from canopyresearch.services.scoring import (
     compute_relevance_score,
     compute_velocity_score,
 )
+from canopyresearch.services.summarization import summarize_document
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,22 @@ def _extract_and_embed_document(document_id: int) -> dict:
         if cleaned_content and len(cleaned_content) > len(document.content):
             document.content = cleaned_content
             document.save(update_fields=["content", "updated_at"])
+
+        # Extract links from the document URL and store in metadata
+        if document.url:
+            links = extract_links_from_url(document.url)
+            if not document.metadata:
+                document.metadata = {}
+            document.metadata["extracted_links"] = [
+                {"url": url, "text": text} for url, text in links
+            ]
+            document.save(update_fields=["metadata", "updated_at"])
+
+        # Generate workspace-contextual summary
+        summary = summarize_document(document)
+        if summary:
+            document.summary = summary
+            document.save(update_fields=["summary", "updated_at"])
 
         # Compute embedding
         backend = get_embedding_backend()
@@ -94,6 +112,13 @@ def _assign_cluster(document_id: int) -> dict:
     try:
         cluster = assign_document_to_cluster(document)
         if cluster:
+            # Re-label the cluster whenever it gains a document (size >= 2 means
+            # it's no longer a singleton and a label is meaningful)
+            if cluster.size >= 2:
+                try:
+                    task_label_cluster.enqueue(cluster_id=cluster.id)
+                except Exception as e:
+                    logger.warning("Failed to enqueue label task for cluster %s: %s", cluster.id, e)
             return {"status": "success", "cluster_id": cluster.id}
         else:
             return {"status": "skipped", "message": "Document has no embedding"}
@@ -526,6 +551,75 @@ def task_recompute_novelty(workspace_id: int) -> dict:
         errors,
     )
     return {"status": "success", "recomputed": recomputed, "total": total, "errors": errors}
+
+
+@task
+def task_reembed_workspace(workspace_id: int) -> dict:
+    """
+    Re-embed all documents in a workspace using the current embedding backend.
+
+    Use this after switching embedding models to regenerate all vectors, then
+    trigger task_recompute_clusters and task_rescore_workspace to rebuild
+    downstream state.
+
+    Args:
+        workspace_id: Workspace ID to re-embed
+    """
+    try:
+        workspace = Workspace.objects.get(pk=workspace_id)
+    except Workspace.DoesNotExist:
+        logger.error("Workspace %s not found", workspace_id)
+        return {"status": "error", "message": "Workspace not found"}
+
+    documents = workspace.documents.all()
+    total = documents.count()
+    reembedded = 0
+    errors = 0
+
+    for doc in documents:
+        try:
+            result = _extract_and_embed_document(doc.id)
+            if result.get("status") == "success":
+                reembedded += 1
+            else:
+                errors += 1
+        except Exception as e:
+            logger.exception("Error re-embedding document %s: %s", doc.id, e)
+            errors += 1
+
+    # Rebuild clusters and scores with the new embeddings
+    if reembedded > 0:
+        task_recompute_clusters.enqueue(workspace_id=workspace_id)
+        task_rescore_workspace.enqueue(workspace_id=workspace_id)
+
+    logger.info(
+        "Re-embedded workspace %s: %d/%d documents, %d errors",
+        workspace_id,
+        reembedded,
+        total,
+        errors,
+    )
+    return {"status": "success", "reembedded": reembedded, "total": total, "errors": errors}
+
+
+@task
+def task_label_cluster(cluster_id: int) -> dict:
+    """Generate and save a descriptive label for a cluster using an LLM."""
+    try:
+        cluster = Cluster.objects.get(pk=cluster_id)
+    except Cluster.DoesNotExist:
+        logger.error("Cluster %s not found", cluster_id)
+        return {"status": "error", "message": "Cluster not found"}
+
+    try:
+        label = label_cluster(cluster)
+        if label:
+            return {"status": "success", "label": label}
+        else:
+            return {"status": "skipped", "message": "LLM not available or no titles"}
+    except Exception as e:
+        logger.exception("Failed to label cluster %s: %s", cluster_id, e)
+        return {"status": "error", "message": str(e)}
 
 
 def cleanup_old_documents(workspace_id: int, days_old: int = 90) -> int:
