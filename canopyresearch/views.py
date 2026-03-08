@@ -14,7 +14,14 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from canopyresearch.forms import SourceForm, WorkspaceForm
-from canopyresearch.models import Cluster, Document, IngestionLog, Source, Workspace, WorkspaceCoreFeedback
+from canopyresearch.models import (
+    Cluster,
+    Document,
+    IngestionLog,
+    Source,
+    Workspace,
+    WorkspaceCoreFeedback,
+)
 from canopyresearch.services.core import add_core_feedback, seed_workspace_core
 from canopyresearch.services.source_discovery import (
     auto_discover_and_create_sources,
