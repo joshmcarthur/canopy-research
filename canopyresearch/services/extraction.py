@@ -15,6 +15,7 @@ from canopyresearch.services.providers import (
     HTTP_TIMEOUT,
     MAX_RESPONSE_SIZE,
     USER_AGENT,
+    _extract_links_from_html,
     _is_url_allowed,
 )
 
@@ -151,6 +152,48 @@ def extract_content_from_url(url: str) -> str | None:
     except (requests.RequestException, ValueError, TypeError) as e:
         logger.debug("Failed to extract content from URL %s: %s", url, e)
         return None
+
+
+def extract_links_from_url(url: str, max_links: int = 50) -> list[tuple[str, str]]:
+    """
+    Fetch URL and extract http(s) links from the article body.
+
+    Returns a list of (url, text) tuples, capped at max_links.
+    Returns an empty list on any failure.
+    """
+    if not _is_url_allowed(url):
+        return []
+
+    try:
+        resp = requests.get(
+            url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT, stream=True
+        )
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("Content-Type", "")
+        if "text/html" not in content_type and "application/xhtml" not in content_type:
+            return []
+
+        content_chunks = []
+        total_size = 0
+        for chunk in resp.iter_content(chunk_size=8192):
+            if chunk:
+                total_size += len(chunk)
+                if total_size > MAX_RESPONSE_SIZE:
+                    return []
+                content_chunks.append(chunk)
+
+        html_bytes = b"".join(content_chunks)
+        try:
+            html = html_bytes.decode("utf-8", errors="replace")
+        except (UnicodeDecodeError, AttributeError):
+            return []
+
+        return _extract_links_from_html(html, skip_same_domain=url)[:max_links]
+
+    except (requests.RequestException, ValueError, TypeError) as e:
+        logger.debug("Failed to extract links from URL %s: %s", url, e)
+        return []
 
 
 def extract_and_clean_content(content: str, url: str | None = None) -> str:

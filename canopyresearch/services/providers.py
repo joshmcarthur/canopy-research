@@ -228,6 +228,24 @@ class BaseSourceProvider:
         """
         raise NotImplementedError("Subclasses must implement normalize()")
 
+    @classmethod
+    def search(cls, terms: list[str], limit: int = 50, **kwargs) -> list[dict[str, Any]]:
+        """
+        Search for documents matching the given terms.
+
+        This is used for source discovery, not regular ingestion.
+        Returns raw documents in the same format as fetch().
+
+        Args:
+            terms: List of search terms to match
+            limit: Maximum number of results to return
+            **kwargs: Provider-specific search options
+
+        Returns:
+            List of raw document dicts (will be normalized if added as source)
+        """
+        raise NotImplementedError("Subclasses must implement search()")
+
 
 def _entry_to_raw(entry: Any) -> dict[str, Any]:
     """Convert feedparser entry to raw dict for normalize."""
@@ -344,6 +362,131 @@ class RSSProvider(BaseSourceProvider):
             "published_at": published_at,
             "metadata": metadata,
         }
+
+    @classmethod
+    def search(cls, terms: list[str], limit: int = 50, **kwargs) -> list[dict[str, Any]]:
+        """
+        Discover RSS feeds matching the given terms using LLM.
+
+        Args:
+            terms: List of search terms to match
+            limit: Maximum number of feed URLs to return (default 50)
+            **kwargs: Optional parameters:
+                - api_key: OpenAI API key (optional, uses env var if not provided)
+                - model: Model to use (default "gpt-4o-mini")
+
+        Returns:
+            List of dicts with feed_url, title, description, and sample_entries
+        """
+        if not terms:
+            return []
+
+        query = " ".join(terms).strip()
+        api_key = kwargs.get("api_key") or os.environ.get("OPENAI_API_KEY")
+        api_base = kwargs.get("api_base") or os.environ.get(
+            "OPENAI_API_BASE", "https://api.openai.com/v1"
+        )
+        model = kwargs.get("model") or os.environ.get("TERM_EXTRACTION_MODEL", "gpt-4o-mini")
+
+        if not api_key:
+            # Fallback: return empty list if no API key
+            return []
+
+        try:
+            import openai
+
+            client = openai.OpenAI(api_key=api_key, base_url=api_base)
+
+            prompt = f"""Find RSS feed URLs that would be relevant for someone researching: {query}
+
+Return a JSON array of feed objects. Each object should have:
+- feed_url: The RSS/Atom feed URL
+- title: A descriptive title for the feed
+- description: Brief description of what the feed covers
+
+Return up to {min(limit, 20)} feeds. Only return valid RSS/Atom feed URLs.
+Format as JSON array only, no markdown or extra text."""
+
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant that finds RSS feeds. Always return valid JSON arrays.",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.7,
+                max_tokens=2000,
+            )
+
+            content = response.choices[0].message.content.strip()
+            # Remove markdown code blocks if present
+            if content.startswith("```"):
+                content = content.split("```")[1]
+                if content.startswith("json"):
+                    content = content[4:]
+                content = content.strip()
+
+            import json
+
+            feeds = json.loads(content)
+
+            # Fetch sample entries from each feed
+            results: list[dict[str, Any]] = []
+            for feed_info in feeds[:limit]:
+                feed_url = feed_info.get("feed_url")
+                if not feed_url:
+                    continue
+
+                try:
+                    # Fetch feed to get sample entries
+                    resp = requests.get(
+                        feed_url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT
+                    )
+                    resp.raise_for_status()
+                    parsed = feedparser.parse(resp.content)
+
+                    # Get first few entries as samples
+                    sample_entries = []
+                    for entry in parsed.entries[:3]:
+                        sample_entries.append(
+                            {
+                                "title": getattr(entry, "title", ""),
+                                "link": getattr(entry, "link", ""),
+                                "summary": getattr(entry, "summary", "")[:200]
+                                if hasattr(entry, "summary")
+                                else "",
+                            }
+                        )
+
+                    results.append(
+                        {
+                            "feed_url": feed_url,
+                            "title": feed_info.get("title", feed_url),
+                            "description": feed_info.get("description", ""),
+                            "sample_entries": sample_entries,
+                            "feed_title": parsed.feed.get("title", ""),
+                        }
+                    )
+                except Exception:
+                    # If feed fetch fails, still include the feed URL
+                    results.append(
+                        {
+                            "feed_url": feed_url,
+                            "title": feed_info.get("title", feed_url),
+                            "description": feed_info.get("description", ""),
+                            "sample_entries": [],
+                        }
+                    )
+
+            return results
+
+        except ImportError:
+            return []
+        except Exception:
+            # If LLM call fails, return empty list
+            return []
 
 
 class HackerNewsProvider(BaseSourceProvider):
@@ -477,6 +620,86 @@ class HackerNewsProvider(BaseSourceProvider):
                 "num_comments": raw_doc.get("num_comments"),
             },
         }
+
+    @classmethod
+    def search(cls, terms: list[str], limit: int = 50, **kwargs) -> list[dict[str, Any]]:
+        """
+        Search Hacker News for stories matching the given terms.
+
+        Args:
+            terms: List of search terms to match
+            limit: Maximum number of results (default 50, max 100)
+            **kwargs: Optional search parameters:
+                - min_points: Minimum points threshold
+                - min_comments: Minimum comments threshold
+                - fetch_full_article: Whether to fetch full article content (default True)
+
+        Returns:
+            List of raw HN story dicts
+        """
+        from urllib.parse import quote
+
+        if not terms:
+            return []
+
+        # Join terms into query string
+        query = " ".join(terms).strip()
+        limit = min(limit, 100)
+        min_points = kwargs.get("min_points")
+        min_comments = kwargs.get("min_comments")
+        fetch_full_article = kwargs.get("fetch_full_article", True)
+
+        # Use search endpoint with story tags
+        tags = "story"
+        endpoint = "search"
+        params = [f"tags={tags}", f"hitsPerPage={limit}", f"query={quote(query)}"]
+
+        # Add numeric filters if provided
+        numeric_filters = []
+        if min_points is not None:
+            numeric_filters.append(f"points>={min_points}")
+        if min_comments is not None:
+            numeric_filters.append(f"num_comments>={min_comments}")
+
+        if numeric_filters:
+            params.append(f"numericFilters={','.join(numeric_filters)}")
+
+        url = f"https://hn.algolia.com/api/v1/{endpoint}?{'&'.join(params)}"
+
+        try:
+            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            return []
+
+        hits = data.get("hits", [])
+        raw_docs: list[dict[str, Any]] = []
+
+        for hit in hits:
+            raw: dict[str, Any] = {
+                "id": hit.get("objectID") or hit.get("story_id"),
+                "objectID": hit.get("objectID"),
+                "story_id": hit.get("story_id"),
+                "title": hit.get("title", ""),
+                "url": hit.get("url"),
+                "author": hit.get("author"),
+                "points": hit.get("points", 0),
+                "num_comments": hit.get("num_comments", 0),
+                "created_at_i": hit.get("created_at_i"),
+                "text": hit.get("story_text") or hit.get("title", ""),
+            }
+            if (
+                fetch_full_article
+                and raw.get("url")
+                and "news.ycombinator.com" not in str(raw["url"])
+            ):
+                extracted = extract_article_content(str(raw["url"]))
+                if extracted:
+                    raw["extracted_content"] = extracted
+            raw_docs.append(raw)
+
+        return raw_docs
 
 
 def _reddit_refresh_token(client_id: str, client_secret: str, refresh_token: str) -> str:
@@ -612,6 +835,238 @@ class SubredditProvider(BaseSourceProvider):
                 "score": raw_doc.get("score"),
             },
         }
+
+    @classmethod
+    def search(cls, terms: list[str], limit: int = 50, **kwargs) -> list[dict[str, Any]]:
+        """
+        Search Reddit for posts matching the given terms.
+
+        Uses Reddit's search API. If subreddits are provided in kwargs, searches within
+        those subreddits. Otherwise, searches across all of Reddit.
+
+        Args:
+            terms: List of search terms to match
+            limit: Maximum number of results (default 50, max 100)
+            **kwargs: Optional search parameters:
+                - subreddits: List of subreddit names to search within (optional)
+                - timeframe: "hour", "day", "week", "month", "year", "all" (default "week")
+                - fetch_full_article: Whether to fetch full article content (default True)
+                - client_id, client_secret, refresh_token: Reddit OAuth credentials (optional)
+
+        Returns:
+            List of raw Reddit post dicts
+        """
+        if not terms:
+            return []
+
+        query = " ".join(terms).strip()
+        limit = min(limit, 100)
+        subreddits = kwargs.get("subreddits", [])
+        timeframe = kwargs.get("timeframe", "week")
+        fetch_full_article = kwargs.get("fetch_full_article", True)
+
+        client_id = kwargs.get("client_id") or os.environ.get("REDDIT_CLIENT_ID")
+        client_secret = kwargs.get("client_secret") or os.environ.get("REDDIT_CLIENT_SECRET")
+        refresh_token = kwargs.get("refresh_token")
+        use_oauth = bool(client_id and client_secret and refresh_token)
+
+        raw_docs: list[dict[str, Any]] = []
+
+        # If subreddits specified, search each one
+        if subreddits:
+            for subreddit in subreddits[:10]:  # Limit to 10 subreddits
+                try:
+                    posts = cls._search_subreddit(
+                        subreddit,
+                        query,
+                        limit,
+                        timeframe,
+                        use_oauth,
+                        client_id,
+                        client_secret,
+                        refresh_token,
+                    )
+                    raw_docs.extend(posts)
+                    if len(raw_docs) >= limit:
+                        break
+                except Exception:
+                    continue
+        else:
+            # Search across all of Reddit
+            try:
+                raw_docs = cls._search_reddit_all(
+                    query, limit, timeframe, use_oauth, client_id, client_secret, refresh_token
+                )
+            except Exception:
+                return []
+
+        # Fetch full article content if requested
+        if fetch_full_article:
+            for raw in raw_docs[:limit]:
+                is_self = "reddit.com" in str(raw.get("url", ""))
+                if not is_self and raw.get("url") and "reddit.com" not in str(raw["url"]):
+                    extracted = extract_article_content(str(raw["url"]))
+                    if extracted:
+                        raw["extracted_content"] = extracted
+
+        return raw_docs[:limit]
+
+    @classmethod
+    def _search_subreddit(
+        cls,
+        subreddit: str,
+        query: str,
+        limit: int,
+        timeframe: str,
+        use_oauth: bool,
+        client_id: str | None,
+        client_secret: str | None,
+        refresh_token: str | None,
+    ) -> list[dict[str, Any]]:
+        """Search within a specific subreddit."""
+        from urllib.parse import quote
+
+        if use_oauth and refresh_token:
+            token = _reddit_refresh_token(client_id, client_secret, refresh_token)
+            base_url = "https://oauth.reddit.com"
+            headers = {"User-Agent": USER_AGENT, "Authorization": f"Bearer {token}"}
+        else:
+            base_url = "https://www.reddit.com"
+            headers = {"User-Agent": USER_AGENT}
+
+        url = f"{base_url}/r/{subreddit}/search.json?q={quote(query)}&limit={limit}&sort=relevance&t={timeframe}"
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.RequestException:
+            return []
+
+        children = data.get("data", {}).get("children", [])
+        raw_docs: list[dict[str, Any]] = []
+
+        for child in children:
+            post = child.get("data", {}) if isinstance(child, dict) else {}
+            if not post:
+                continue
+            raw: dict[str, Any] = {
+                "id": post.get("id"),
+                "title": post.get("title", ""),
+                "selftext": post.get("selftext", ""),
+                "url": post.get("url", ""),
+                "permalink": post.get("permalink", ""),
+                "author": post.get("author"),
+                "subreddit": post.get("subreddit"),
+                "score": post.get("score"),
+                "created_utc": post.get("created_utc"),
+            }
+            raw_docs.append(raw)
+
+        return raw_docs
+
+    @classmethod
+    def _search_reddit_all(
+        cls,
+        query: str,
+        limit: int,
+        timeframe: str,
+        use_oauth: bool,
+        client_id: str | None,
+        client_secret: str | None,
+        refresh_token: str | None,
+    ) -> list[dict[str, Any]]:
+        """Search across all of Reddit."""
+        from urllib.parse import quote
+
+        if use_oauth and refresh_token:
+            token = _reddit_refresh_token(client_id, client_secret, refresh_token)
+            base_url = "https://oauth.reddit.com"
+            headers = {"User-Agent": USER_AGENT, "Authorization": f"Bearer {token}"}
+        else:
+            base_url = "https://www.reddit.com"
+            headers = {"User-Agent": USER_AGENT}
+
+        url = f"{base_url}/search.json?q={quote(query)}&limit={limit}&sort=relevance&t={timeframe}"
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.RequestException:
+            return []
+
+        children = data.get("data", {}).get("children", [])
+        raw_docs: list[dict[str, Any]] = []
+
+        for child in children:
+            post = child.get("data", {}) if isinstance(child, dict) else {}
+            if not post:
+                continue
+            raw: dict[str, Any] = {
+                "id": post.get("id"),
+                "title": post.get("title", ""),
+                "selftext": post.get("selftext", ""),
+                "url": post.get("url", ""),
+                "permalink": post.get("permalink", ""),
+                "author": post.get("author"),
+                "subreddit": post.get("subreddit"),
+                "score": post.get("score"),
+                "created_utc": post.get("created_utc"),
+            }
+            raw_docs.append(raw)
+
+        return raw_docs
+
+    @classmethod
+    def search_subreddits(cls, terms: list[str], limit: int = 10) -> list[dict[str, Any]]:
+        """
+        Search for subreddits by name/description matching the given terms.
+
+        Uses Reddit's /subreddits/search endpoint, which ranks by relevance to
+        the query against subreddit names and descriptions — much more reliable
+        for source discovery than searching posts and grouping by subreddit.
+
+        Args:
+            terms: List of search terms
+            limit: Maximum number of subreddits to return (default 10, max 25)
+
+        Returns:
+            List of dicts with subreddit name, title, description, subscriber_count
+        """
+        from urllib.parse import quote
+
+        if not terms:
+            return []
+
+        query = " ".join(terms[:8]).strip()
+        limit = min(limit, 25)
+        url = f"https://www.reddit.com/subreddits/search.json?q={quote(query)}&limit={limit}&sort=relevance"
+
+        try:
+            resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=HTTP_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            return []
+
+        results = []
+        for child in data.get("data", {}).get("children", []):
+            sr = child.get("data", {})
+            if not sr or sr.get("over18"):
+                continue
+            results.append(
+                {
+                    "name": sr.get("display_name", ""),
+                    "title": sr.get("title", ""),
+                    "description": (sr.get("public_description") or sr.get("description") or "")[
+                        :300
+                    ],
+                    "subscriber_count": sr.get("subscribers", 0),
+                    "url": f"https://www.reddit.com/r/{sr.get('display_name', '')}",
+                }
+            )
+        return results
 
 
 PROVIDER_REGISTRY = {

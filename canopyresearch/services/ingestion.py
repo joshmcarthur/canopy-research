@@ -45,6 +45,12 @@ def persist_document(workspace, source: Source, data: dict) -> bool:
             f"external_id={external_id!r}, source={source.name!r}"
         )
 
+    # Deduplicate by URL first — same URL with different content should not create a new document
+    existing_by_url = Document.objects.filter(workspace=workspace, url=url).first()
+    if existing_by_url:
+        DocumentSource.objects.get_or_create(document=existing_by_url, source=source)
+        return False
+
     content_hash = compute_hash(data)
     published_at = data.get("published_at")
     if published_at is None:
@@ -96,6 +102,10 @@ def ingest_source(source: Source) -> tuple[int, int]:
 
     Returns (documents_found, documents_created).
     """
+    if IngestionLog.objects.filter(source=source, finished_at__isnull=True).exists():
+        logger.info("Skipping source %s — ingestion already in progress", source.name)
+        return 0, 0
+
     started_at = timezone.now()
     workspace = source.workspace
     log = IngestionLog.objects.create(
