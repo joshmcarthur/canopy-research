@@ -25,6 +25,20 @@
         <div class="form-error">{{ form.description.errors }}</div>
     {% endif %}
 
+    <sl-input
+        label="Auto-ingest every (hours)"
+        name="ingestion_interval_hours"
+        type="number"
+        min="1"
+        value="{{ form.ingestion_interval_hours.value|default:'' }}"
+        placeholder="Leave blank to disable"
+        class="form-group"
+        help-text="How often to automatically fetch new content. Leave blank for manual-only ingestion."
+    ></sl-input>
+    {% if form.ingestion_interval_hours.errors %}
+        <div class="form-error">{{ form.ingestion_interval_hours.errors }}</div>
+    {% endif %}
+
     <div class="form-actions">
         <sl-button type="submit" variant="primary">Save</sl-button>
         <sl-button type="button" variant="default" onclick="document.getElementById('resource-dialog').hide()">Cancel</sl-button>

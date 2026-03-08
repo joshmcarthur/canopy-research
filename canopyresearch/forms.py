@@ -15,10 +15,13 @@ class WorkspaceForm(forms.ModelForm):
 
     class Meta:
         model = Workspace
-        fields = ["name", "description"]
+        fields = ["name", "description", "ingestion_interval_hours"]
         widgets = {
             "name": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            "ingestion_interval_hours": forms.NumberInput(
+                attrs={"class": "form-control", "min": 1, "placeholder": "e.g. 6"}
+            ),
         }
 
 

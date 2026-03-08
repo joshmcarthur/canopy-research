@@ -1,0 +1,60 @@
+<form method="post" id="discover-form-{{ provider_type }}" hx-post="{% url 'source_discover' workspace.id %}" hx-target="#tab-content" hx-swap="innerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="provider_type" value="{{ provider_type }}">
+
+    {% if candidates %}
+        <div class="candidates-list" style="display: grid; gap: 1rem;">
+            {% for candidate in candidates %}
+            <sl-card>
+                <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong>{{ candidate.name }}</strong>
+                    <sl-checkbox name="candidate_ids" value="{{ forloop.counter0 }}"></sl-checkbox>
+                </div>
+                <p style="font-size: 0.875rem; color: var(--sl-color-neutral-600); margin-top: 0;">
+                    {{ candidate.match_reason }}
+                    {% if candidate.subscriber_count %}
+                    <br><span style="color: var(--sl-color-neutral-400);">{{ candidate.subscriber_count }} subscribers</span>
+                    {% endif %}
+                </p>
+                {% if candidate.sample_documents %}
+                <div style="margin-top: 1rem;">
+                    <strong style="font-size: 0.875rem;">Sample content:</strong>
+                    <ul style="margin: 0.5rem 0 0 0; padding-left: 1.5rem; font-size: 0.875rem;">
+                        {% for sample in candidate.sample_documents|slice:":3" %}
+                        <li>
+                            <a href="{{ sample.url|default:sample.link|default:'#' }}" target="_blank" rel="noopener">
+                                {{ sample.title|truncatewords:10 }}
+                            </a>
+                            {% if sample.points %}
+                            <span style="color: var(--sl-color-neutral-500);">({{ sample.points }} points)</span>
+                            {% elif sample.score %}
+                            <span style="color: var(--sl-color-neutral-500);">({{ sample.score }} score)</span>
+                            {% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+            </sl-card>
+            {% endfor %}
+        </div>
+
+        <div style="margin-top: 1.5rem; display: flex; gap: 0.5rem; align-items: center;">
+            <sl-button type="submit" variant="primary">
+                Add Selected Sources
+            </sl-button>
+            <sl-button type="button" variant="default" onclick="document.querySelectorAll('#discover-form-{{ provider_type }} sl-checkbox').forEach(cb => cb.checked = true)">
+                Select All
+            </sl-button>
+            <sl-button type="button" variant="default" onclick="document.querySelectorAll('#discover-form-{{ provider_type }} sl-checkbox').forEach(cb => cb.checked = false)">
+                Deselect All
+            </sl-button>
+        </div>
+    {% else %}
+        <sl-card>
+            <p style="color: var(--sl-color-neutral-600);">
+                No {{ provider_label }} sources found matching your search terms. Try adjusting your workspace description or adding more feedback.
+            </p>
+        </sl-card>
+    {% endif %}
+</form>

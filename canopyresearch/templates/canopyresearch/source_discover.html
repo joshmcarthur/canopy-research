@@ -1,0 +1,60 @@
+{% extends "canopyresearch/base.html" %}
+
+{% block title %}Discover Sources - {{ workspace.name }} - Canopy Research{% endblock %}
+
+{% block content %}
+<h2>Discover Sources for {{ workspace.name }}</h2>
+
+<div class="discovery-info" style="margin-bottom: 1.5rem;">
+    <sl-card>
+        <div slot="header">
+            <strong>Search Terms</strong>
+        </div>
+        {% if terms %}
+        <p style="margin: 0;">
+            Searching with: <strong>{{ terms|join:", " }}</strong>
+        </p>
+        <p style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--sl-color-neutral-600);">
+            Terms are extracted from workspace name, description, and thumbs-up documents.
+        </p>
+        {% else %}
+        <p style="margin: 0; color: var(--sl-color-neutral-600);">
+            No search terms available. Add a workspace description or give feedback on documents to generate terms.
+        </p>
+        {% endif %}
+    </sl-card>
+</div>
+
+{% if terms %}
+<sl-tab-group>
+    <sl-tab slot="nav" panel="hackernews">HackerNews</sl-tab>
+    <sl-tab slot="nav" panel="subreddit">Reddit</sl-tab>
+    <sl-tab slot="nav" panel="rss">RSS Feeds</sl-tab>
+
+    <sl-tab-panel name="hackernews">
+        {% include "canopyresearch/partials/discover_provider.html" with provider_type="hackernews" provider_label="HackerNews" candidates=candidates_by_provider.hackernews %}
+    </sl-tab-panel>
+
+    <sl-tab-panel name="subreddit">
+        {% include "canopyresearch/partials/discover_provider.html" with provider_type="subreddit" provider_label="Reddit" candidates=candidates_by_provider.subreddit %}
+    </sl-tab-panel>
+
+    <sl-tab-panel name="rss">
+        {% include "canopyresearch/partials/discover_provider.html" with provider_type="rss" provider_label="RSS Feeds" candidates=candidates_by_provider.rss %}
+    </sl-tab-panel>
+</sl-tab-group>
+{% else %}
+<sl-card>
+    <p>Please add a workspace description or give feedback on documents to enable source discovery.</p>
+    <sl-button variant="primary" href="{% url 'workspace_edit' workspace.id %}">
+        Edit Workspace
+    </sl-button>
+</sl-card>
+{% endif %}
+
+<div style="margin-top: 1.5rem;">
+    <a href="{% url 'source_list' workspace.id %}">
+        <sl-button variant="default">Back to Sources</sl-button>
+    </a>
+</div>
+{% endblock %}

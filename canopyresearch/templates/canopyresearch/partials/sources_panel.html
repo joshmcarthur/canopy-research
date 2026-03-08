@@ -1,20 +1,44 @@
 <div id="sources-tab-content">
     <div class="sources-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <span></span>
-        <span id="ingest-trigger">
-            <form hx-post="{% url 'workspace_ingest' workspace.id %}"
-                hx-target="#ingest-trigger"
-                hx-swap="outerHTML"
-                style="display: inline;">
+        <span>
+            <sl-button variant="default" size="small"
+                hx-get="{% url 'source_discover' workspace.id %}"
+                hx-target="#tab-content"
+                hx-swap="innerHTML"
+                hx-push-url="true">
+                <sl-icon slot="prefix" name="search"></sl-icon>
+                Discover Sources
+            </sl-button>
+        </span>
+        <span style="display: flex; gap: 0.5rem;">
+            <span id="ingest-trigger">
+                <form hx-post="{% url 'workspace_ingest' workspace.id %}"
+                    hx-target="#ingest-trigger"
+                    hx-swap="outerHTML"
+                    style="display: inline;">
+                    {% csrf_token %}
+                    <sl-button type="submit" variant="default" size="small">
+                        <sl-icon slot="prefix" name="arrow-repeat"></sl-icon>
+                        Ingest Now
+                    </sl-button>
+                </form>
+            </span>
+            <form method="post" action="{% url 'workspace_reembed' workspace.id %}" style="display: inline;">
                 {% csrf_token %}
                 <sl-button type="submit" variant="default" size="small">
-                    <sl-icon slot="prefix" name="arrow-repeat"></sl-icon>
-                    Ingest Now
+                    <sl-icon slot="prefix" name="cpu"></sl-icon>
+                    Re-embed
                 </sl-button>
             </form>
         </span>
     </div>
-    {% if sources %}
+    <div hx-get="{% url 'ingestion_log' workspace.id %}"
+     hx-trigger="load"
+     hx-swap="outerHTML">
+    <p style="color: var(--sl-color-neutral-400); font-size: 0.875rem;">Loading ingestion log...</p>
+</div>
+
+{% if sources %}
     <table class="data-grid">
         <thead>
             <tr>
