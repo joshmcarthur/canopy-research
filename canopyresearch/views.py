@@ -3,6 +3,8 @@ Django views for canopyresearch.
 """
 
 import json
+import logging
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -12,9 +14,23 @@ from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from canopyresearch.forms import SourceForm, WorkspaceForm
-from canopyresearch.models import Cluster, Document, Source, Workspace
+from canopyresearch.models import Cluster, Document, IngestionLog, Source, Workspace, WorkspaceCoreFeedback
 from canopyresearch.services.core import add_core_feedback, seed_workspace_core
-from canopyresearch.tasks import task_ingest_workspace, task_update_workspace_core
+from canopyresearch.services.source_discovery import (
+    auto_discover_and_create_sources,
+    create_source_from_candidate,
+    discover_source_candidates,
+    extract_search_terms,
+    initialize_workspace_search_terms,
+    update_search_terms_from_feedback,
+)
+from canopyresearch.tasks import (
+    task_ingest_workspace,
+    task_reembed_workspace,
+    task_update_workspace_core,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -53,7 +69,33 @@ def workspace_create(request):
             workspace = form.save(commit=False)
             workspace.owner = request.user
             workspace.save()
-            messages.success(request, f'Workspace "{workspace.name}" created successfully.')
+            # Extract initial search terms
+            initialize_workspace_search_terms(workspace)
+            # Automatically discover and create sources
+            try:
+                source_counts = auto_discover_and_create_sources(
+                    workspace, max_sources_per_provider=3
+                )
+                if source_counts.get("total", 0) > 0:
+                    # Trigger background ingestion to populate workspace with content
+                    task_ingest_workspace.enqueue(workspace_id=workspace.id)
+                    messages.success(
+                        request,
+                        f'Workspace "{workspace.name}" created with {source_counts["total"]} sources discovered automatically. Content ingestion has started.',
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f'Workspace "{workspace.name}" created successfully. No sources were automatically discovered.',
+                    )
+            except Exception as e:
+                logger.exception(
+                    "Failed to auto-discover sources for workspace %s: %s", workspace.id, e
+                )
+                messages.success(
+                    request,
+                    f'Workspace "{workspace.name}" created successfully. Source discovery encountered an error.',
+                )
             return redirect("workspace_detail", workspace_id=workspace.id)
     else:
         form = WorkspaceForm()
@@ -72,6 +114,8 @@ def workspace_edit(request, workspace_id):
         form = WorkspaceForm(request.POST, instance=workspace)
         if form.is_valid():
             form.save()
+            # Update search terms if name/description changed
+            initialize_workspace_search_terms(workspace)
             messages.success(request, f'Workspace "{workspace.name}" updated successfully.')
             if request.headers.get("HX-Request"):
                 # HTMX request - close dialog and refresh page
@@ -247,6 +291,75 @@ def source_delete(request, workspace_id, source_id):
 
 
 @login_required
+@require_http_methods(["GET", "POST"])
+def source_discover(request, workspace_id):
+    """Discover source candidates for a workspace."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+
+    if request.method == "POST":
+        # Create sources from selected candidates
+        candidate_ids = request.POST.getlist("candidate_ids")
+        provider_type = request.POST.get("provider_type")
+
+        if not candidate_ids or not provider_type:
+            messages.error(request, "Please select at least one source candidate.")
+            return redirect("source_discover", workspace_id=workspace.id)
+
+        # Get candidates for this provider type
+        all_candidates = discover_source_candidates(workspace, provider_type)
+        created_count = 0
+
+        for candidate_id in candidate_ids:
+            try:
+                idx = int(candidate_id)
+                if 0 <= idx < len(all_candidates):
+                    candidate = all_candidates[idx]
+                    create_source_from_candidate(workspace, candidate)
+                    created_count += 1
+            except (ValueError, IndexError):
+                continue
+
+        if created_count > 0:
+            messages.success(request, f"Created {created_count} source(s) successfully.")
+        else:
+            messages.error(request, "Failed to create sources. Please try again.")
+
+        if request.headers.get("HX-Request"):
+            sources_url = reverse("source_list", args=[workspace.id])
+            response = HttpResponse(
+                f'<div hx-get="{sources_url}" '
+                'hx-trigger="load" hx-swap="innerHTML" hx-target="#tab-content">Loading...</div>'
+            )
+            response["HX-Retarget"] = "#tab-content"
+            response["HX-Reswap"] = "innerHTML"
+            return response
+
+        return redirect("source_list", workspace_id=workspace.id)
+
+    # GET: Show discovery interface
+    terms = extract_search_terms(workspace)
+    candidates_by_provider = {}
+
+    for provider_type in ["hackernews", "subreddit", "rss"]:
+        try:
+            candidates = discover_source_candidates(workspace, provider_type, limit_per_provider=20)
+            candidates_by_provider[provider_type] = candidates
+        except Exception as e:
+            logger.exception("Failed to discover candidates for %s: %s", provider_type, e)
+            candidates_by_provider[provider_type] = []
+
+    context = {
+        "workspace": workspace,
+        "terms": terms,
+        "candidates_by_provider": candidates_by_provider,
+    }
+
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/source_discover.html", context)
+    return render(request, "canopyresearch/source_discover.html", context)
+
+
+@login_required
 @require_http_methods(["POST"])
 def workspace_ingest(request, workspace_id):
     """Trigger background ingestion for a workspace. Returns HTMX partial."""
@@ -257,6 +370,32 @@ def workspace_ingest(request, workspace_id):
         return render(request, "canopyresearch/partials/ingest_button.html", context)
     messages.success(request, "Ingestion started.")
     return redirect("workspace_detail", workspace_id=workspace.id)
+
+
+@login_required
+def ingestion_log(request, workspace_id):
+    """Recent ingestion log entries for a workspace. HTMX polling endpoint."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    from django.utils import timezone
+
+    cutoff = timezone.now() - timedelta(minutes=10)
+    base_qs = IngestionLog.objects.filter(source__workspace=workspace).select_related("source")
+    running = base_qs.filter(finished_at__isnull=True, started_at__gte=cutoff).exists()
+    logs = base_qs.order_by("-started_at")[:20]
+    context = {"workspace": workspace, "logs": logs, "running": running}
+    return render(request, "canopyresearch/partials/ingestion_log.html", context)
+
+
+@login_required
+@require_http_methods(["POST"])
+def workspace_reembed(request, workspace_id):
+    """Trigger background re-embedding for all documents in a workspace."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    task_reembed_workspace.enqueue(workspace_id=workspace.id)
+    messages.success(
+        request, "Re-embedding started. Clustering and scoring will follow automatically."
+    )
+    return redirect("source_list", workspace_id=workspace.id)
 
 
 @login_required
@@ -304,6 +443,40 @@ def document_list(request, workspace_id):
 
 
 @login_required
+def document_detail(request, workspace_id, document_id):
+    """Show detail page for a single document."""
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    document = get_object_or_404(
+        Document.objects.prefetch_related("sources"),
+        pk=document_id,
+        workspace=workspace,
+    )
+
+    extracted_links = document.metadata.get("extracted_links", []) if document.metadata else []
+
+    existing_feedback = (
+        WorkspaceCoreFeedback.objects.filter(
+            workspace=workspace, document=document, user=request.user
+        )
+        .order_by("-created_at")
+        .first()
+    )
+    existing_vote = existing_feedback.vote if existing_feedback else None
+
+    context = {
+        "workspace": workspace,
+        "document": document,
+        "extracted_links": extracted_links,
+        "existing_vote": existing_vote,
+    }
+    if request.headers.get("HX-Request"):
+        return render(request, "canopyresearch/partials/document_detail.html", context)
+    context["tab_content_template"] = "canopyresearch/partials/document_detail.html"
+    context["active_tab"] = "documents"
+    return render(request, "canopyresearch/workspace_detail.html", context)
+
+
+@login_required
 @require_http_methods(["POST"])
 def document_feedback(request, workspace_id, document_id):
     """
@@ -322,13 +495,15 @@ def document_feedback(request, workspace_id, document_id):
         add_core_feedback(workspace, document, vote, user=request.user)
         # Trigger background task to update core centroid
         task_update_workspace_core.enqueue(workspace_id=workspace.id)
+        # Update search terms if thumbs up
+        if vote == "up":
+            update_search_terms_from_feedback(workspace, document)
 
         if request.headers.get("HX-Request"):
-            # Return updated document card
-            context = {"workspace": workspace, "document": document}
-            return render(request, "canopyresearch/partials/document_card.html", context)
+            context = {"workspace": workspace, "document": document, "existing_vote": vote}
+            return render(request, "canopyresearch/partials/document_feedback.html", context)
         messages.success(request, f"Feedback recorded: {vote}")
-        return redirect("document_list", workspace_id=workspace.id)
+        return redirect("document_detail", workspace_id=workspace.id, document_id=document.id)
     except ValueError as e:
         if request.headers.get("HX-Request"):
             return HttpResponse(str(e), status=400)
@@ -421,61 +596,102 @@ def cluster_list(request, workspace_id):
 
 @login_required
 def cluster_map_json(request, workspace_id):
-    """Return JSON data for cluster map visualization."""
-    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
-    clusters = workspace.clusters.exclude(centroid=[]).order_by("id")
-
-    # Get workspace core centroid
-    core_centroid = workspace.core_centroid.get("vector") if workspace.core_centroid else None
-
-    # Prepare cluster data with positioning
-    cluster_data = []
-    num_clusters = clusters.count()
+    """Return JSON data for cluster map visualization, with PCA-projected 2D positions."""
 
     from canopyresearch.services.clustering import compute_cluster_rank
 
-    for idx, cluster in enumerate(clusters):
-        # Compute position for radar visualization
-        # Distance from center = alignment score (normalized to 0-1)
-        # Angle = evenly distributed around circle
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    clusters = list(workspace.clusters.exclude(centroid=[]).filter(size__gt=1).order_by("id"))
+
+    workspace.core_centroid.get("vector") if workspace.core_centroid else None
+
+    # Project cluster centroids to 2D using PCA (numpy only, no sklearn).
+    # This places semantically similar clusters near each other on the chart.
+    positions = _pca_positions(clusters)
+
+    cluster_data = []
+    for cluster, (px, py) in zip(clusters, positions, strict=False):
         alignment = cluster.alignment if cluster.alignment is not None else 0.0
-        align_norm = max(0.0, min(1.0, (alignment + 1.0) / 2.0))  # Normalize -1..1 to 0..1
-        distance = align_norm
-        angle = (360.0 / max(1, num_clusters)) * idx if num_clusters > 0 else 0.0
-
-        # Compute cluster rank
-        rank = compute_cluster_rank(cluster)
-
         cluster_data.append(
             {
                 "id": cluster.id,
+                "label": cluster.label or None,
                 "size": cluster.size,
                 "alignment": alignment,
                 "velocity": cluster.velocity if cluster.velocity is not None else 0.0,
-                "drift_distance": cluster.drift_distance
-                if cluster.drift_distance is not None
-                else None,
-                "rank": rank,
-                "centroid": cluster.centroid,
-                "position": {
-                    "angle": angle,
-                    "distance": distance,
-                },
+                "drift_distance": cluster.drift_distance,
+                "rank": compute_cluster_rank(cluster),
+                "position": {"x": px, "y": py},
                 "created_at": cluster.created_at.isoformat() if cluster.created_at else None,
                 "updated_at": cluster.updated_at.isoformat() if cluster.updated_at else None,
             }
         )
 
-    response_data = {
-        "workspace": {
-            "id": workspace.id,
-            "name": workspace.name,
-            "core_centroid": core_centroid,
-        },
-        "clusters": cluster_data,
-    }
+    return JsonResponse(
+        {
+            "workspace": {"id": workspace.id, "name": workspace.name},
+            "clusters": cluster_data,
+        }
+    )
 
-    return JsonResponse(response_data)
+
+def _pca_positions(clusters) -> list[tuple[float, float]]:
+    """
+    Project cluster centroids to 2D via PCA using numpy.
+
+    Returns a list of (x, y) tuples in the same order as the input clusters.
+    Falls back to (0, 0) for any cluster missing a centroid.
+    """
+    import numpy as np
+
+    if not clusters:
+        return []
+
+    vectors = []
+    valid_idx = []
+    for i, c in enumerate(clusters):
+        if c.centroid and len(c.centroid) > 0:
+            vectors.append(c.centroid)
+            valid_idx.append(i)
+
+    result = [(0.0, 0.0)] * len(clusters)
+
+    n = len(vectors)
+    if n == 0:
+        return result
+    if n == 1:
+        result[valid_idx[0]] = (0.0, 0.0)
+        return result
+
+    X = np.array(vectors, dtype=float)
+    X -= X.mean(axis=0)  # centre
+
+    if n == 2:
+        # Only one meaningful direction — project onto it
+        diff = X[1] - X[0]
+        norm = np.linalg.norm(diff)
+        if norm > 0:
+            u = diff / norm
+        else:
+            u = np.zeros_like(diff)
+            u[0] = 1.0
+        proj = X @ u
+        for local_i, global_i in enumerate(valid_idx):
+            result[global_i] = (float(proj[local_i]), 0.0)
+        return result
+
+    # Full PCA: take top-2 eigenvectors of the covariance matrix
+    cov = np.cov(X.T)
+    eigenvalues, eigenvectors = np.linalg.eigh(cov)
+    # eigh returns ascending order — take the last two (largest variance)
+    pc1 = eigenvectors[:, -1]
+    pc2 = eigenvectors[:, -2]
+    projected = X @ np.column_stack([pc1, pc2])
+
+    for local_i, global_i in enumerate(valid_idx):
+        result[global_i] = (float(projected[local_i, 0]), float(projected[local_i, 1]))
+
+    return result
 
 
 @login_required
@@ -586,3 +802,48 @@ def cluster_detail_json(request, workspace_id, cluster_id):
     }
 
     return JsonResponse(response_data)
+
+
+@login_required
+@require_http_methods(["POST"])
+def cluster_branch(request, workspace_id, cluster_id):
+    """
+    Create a new workspace seeded from this cluster's top documents by relevance.
+    """
+    from canopyresearch.models import WorkspaceCoreSeed
+    from canopyresearch.services.core import update_workspace_core_centroid
+
+    workspace = get_object_or_404(Workspace, pk=workspace_id, owner=request.user)
+    cluster = get_object_or_404(Cluster, pk=cluster_id, workspace=workspace)
+
+    name = (
+        request.POST.get("name", "").strip() or f"Branch of {workspace.name} (cluster {cluster.id})"
+    )
+
+    # Top documents by relevance; fall back to assignment order if unscored
+    seed_memberships = list(
+        cluster.memberships.select_related("document")
+        .filter(document__relevance__isnull=False)
+        .order_by("-document__relevance")[:10]
+    ) or list(cluster.memberships.select_related("document").order_by("-assigned_at")[:10])
+
+    new_workspace = Workspace.objects.create(
+        name=name,
+        description=f"Branched from cluster {cluster.id} in '{workspace.name}'.",
+        owner=request.user,
+    )
+
+    for membership in seed_memberships:
+        WorkspaceCoreSeed.objects.create(
+            workspace=new_workspace,
+            document=membership.document,
+            seed_source="manual",
+        )
+
+    update_workspace_core_centroid(new_workspace)
+    initialize_workspace_search_terms(new_workspace)
+
+    messages.success(
+        request, f'Created workspace "{new_workspace.name}" from cluster {cluster.id}.'
+    )
+    return redirect("source_list", workspace_id=new_workspace.id)

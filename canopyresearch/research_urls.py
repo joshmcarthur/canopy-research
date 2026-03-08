@@ -47,9 +47,19 @@ urlpatterns = [
         name="source_delete",
     ),
     path(
+        "workspaces/<int:workspace_id>/sources/discover/",
+        views.source_discover,
+        name="source_discover",
+    ),
+    path(
         "workspaces/<int:workspace_id>/documents/",
         views.document_list,
         name="document_list",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/documents/<int:document_id>/",
+        views.document_detail,
+        name="document_detail",
     ),
     path(
         "workspaces/<int:workspace_id>/documents/<int:document_id>/feedback/",
@@ -65,6 +75,16 @@ urlpatterns = [
         "workspaces/<int:workspace_id>/ingest/",
         views.workspace_ingest,
         name="workspace_ingest",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/ingestion-log/",
+        views.ingestion_log,
+        name="ingestion_log",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/reembed/",
+        views.workspace_reembed,
+        name="workspace_reembed",
     ),
     path(
         "workspaces/<int:workspace_id>/clusters/",
@@ -85,5 +105,10 @@ urlpatterns = [
         "workspaces/<int:workspace_id>/clusters/<int:cluster_id>/json/",
         views.cluster_detail_json,
         name="cluster_detail_json",
+    ),
+    path(
+        "workspaces/<int:workspace_id>/clusters/<int:cluster_id>/branch/",
+        views.cluster_branch,
+        name="cluster_branch",
     ),
 ]
