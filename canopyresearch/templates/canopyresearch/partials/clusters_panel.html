@@ -25,7 +25,7 @@
         {% with cluster=cluster_data.cluster rank=cluster_data.rank %}
         <sl-card class="cluster-card">
             <div slot="header" style="display: flex; justify-content: space-between; align-items: center;">
-                <strong>Cluster {{ cluster.id }}</strong>
+                <strong>{% if cluster.label %}{{ cluster.label }}{% else %}Cluster {{ cluster.id }}{% endif %}</strong>
                 <div style="display: flex; gap: 0.25rem; align-items: center;">
                     <sl-badge variant="{% if rank >= 0.7 %}success{% elif rank >= 0.4 %}warning{% else %}neutral{% endif %}"
                         title="Cluster rank: {{ rank|floatformat:3 }}&#10;Based on alignment, velocity, and stability">

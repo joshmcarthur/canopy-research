@@ -1,8 +1,9 @@
 /**
  * Cluster Map Web Component
- * 
- * Displays clusters in a radar/spider diagram visualization using ApexCharts.
- * Shows clusters positioned relative to workspace centroid (center).
+ *
+ * Displays clusters as a 2D scatter plot using ApexCharts.
+ * Cluster centroids are projected to 2D via PCA on the server side.
+ * Bubble size encodes cluster size; colour encodes velocity.
  */
 
 class ClusterMap extends HTMLElement {
@@ -20,19 +21,16 @@ class ClusterMap extends HTMLElement {
             return;
         }
 
-        // Ensure the custom element itself has height to fill its parent
         this.style.display = 'block';
         this.style.width = '100%';
         this.style.height = '100%';
 
-        // Create container for chart
         const container = document.createElement('div');
         container.id = `cluster-map-chart-${this.workspaceId}`;
         container.style.width = '100%';
         container.style.height = '100%';
         this.appendChild(container);
 
-        // Load data and render chart
         this.loadData();
     }
 
@@ -63,104 +61,78 @@ class ClusterMap extends HTMLElement {
             return;
         }
 
-        // Prepare data for ApexCharts radar chart
-        // Convert clusters to polar coordinates
         const clusters = this.data.clusters;
-        const seriesData = clusters.map(cluster => {
-            // Convert angle (degrees) to radians for positioning
-            const angleRad = (cluster.position.angle * Math.PI) / 180;
-            // Distance from center (alignment score)
-            const distance = cluster.position.distance;
-            
-            // Convert polar to Cartesian for radar chart
-            // ApexCharts radar uses labels around the circle
-            // We'll use a scatter-like approach with custom positioning
-            return {
-                x: cluster.position.angle,
-                y: cluster.position.distance,
-                fillColor: this.getVelocityColor(cluster.velocity),
-                size: Math.sqrt(cluster.size) * 2, // Size encoding
-                meta: cluster
-            };
-        });
 
-        // Create radar chart configuration
+        // Build one series per cluster so each bubble gets its own colour and tooltip
+        const series = clusters.map(cluster => ({
+            name: cluster.label || `Cluster ${cluster.id}`,
+            data: [{
+                x: cluster.position.x,
+                y: cluster.position.y,
+                // z drives bubble size — sqrt to keep large clusters from overwhelming small ones
+                z: Math.max(Math.sqrt(cluster.size) * 4, 4),
+            }],
+        }));
+
         const options = {
             chart: {
-                type: 'radar',
+                type: 'bubble',
                 height: '100%',
                 toolbar: { show: false },
+                zoom: { enabled: false },
                 events: {
                     dataPointSelection: (event, chartContext, config) => {
-                        const cluster = clusters[config.dataPointIndex];
+                        const cluster = clusters[config.seriesIndex];
                         if (cluster) {
                             this.showClusterDetail(cluster.id);
                         }
-                    }
-                }
+                    },
+                },
             },
-            series: [{
-                name: 'Clusters',
-                data: clusters.map((cluster, idx) => {
-                    // For radar chart, we need to create a data point at each angle
-                    // Create a simple representation: distance from center
-                    return cluster.position.distance;
-                })
-            }],
-            labels: clusters.map((cluster, idx) => `Cluster ${cluster.id}`),
-            plotOptions: {
-                radar: {
-                    polygons: {
-                        fill: {
-                            colors: ['transparent']
-                        },
-                        strokeColors: ['#e0e0e0'],
-                        connectorColors: ['#e0e0e0']
-                    }
-                }
-            },
-            markers: {
-                size: clusters.map(cluster => Math.sqrt(cluster.size) * 3),
-                colors: clusters.map(cluster => this.getVelocityColor(cluster.velocity)),
-                strokeColors: clusters.map(cluster => this.getVelocityColor(cluster.velocity)),
-                strokeWidth: 2,
-                hover: {
-                    size: 8
-                }
-            },
-            tooltip: {
-                custom: function({seriesIndex, dataPointIndex, w}) {
-                    const cluster = clusters[dataPointIndex];
-                    if (!cluster) return '';
-                    return `
-                        <div style="padding: 0.5rem;">
-                            <strong>Cluster ${cluster.id}</strong><br/>
-                            Size: ${cluster.size}<br/>
-                            Alignment: ${cluster.alignment.toFixed(2)}<br/>
-                            Velocity: ${cluster.velocity.toFixed(2)}<br/>
-                            ${cluster.drift_distance !== null ? `Drift: ${cluster.drift_distance.toFixed(3)}<br/>` : ''}
-                        </div>
-                    `;
-                }
-            },
+            series,
+            colors: clusters.map(c => this.velocityColor(c.velocity)),
+            dataLabels: { enabled: false },
             xaxis: {
-                categories: clusters.map((cluster, idx) => `Cluster ${cluster.id}`)
+                tickAmount: 5,
+                labels: { show: false },
+                axisBorder: { show: false },
+                axisTicks: { show: false },
+                title: { text: '' },
             },
             yaxis: {
-                show: false,
-                min: 0,
-                max: 1
+                tickAmount: 5,
+                labels: { show: false },
+                title: { text: '' },
             },
-            fill: {
-                opacity: 0.3
+            grid: {
+                borderColor: 'var(--sl-color-neutral-200)',
+                xaxis: { lines: { show: true } },
+                yaxis: { lines: { show: true } },
             },
-            stroke: {
-                width: 2
+            legend: {
+                show: clusters.length <= 12,
+                position: 'bottom',
+                fontSize: '12px',
             },
-            colors: clusters.map(cluster => this.getVelocityColor(cluster.velocity))
+            tooltip: {
+                custom: ({ seriesIndex }) => {
+                    const c = clusters[seriesIndex];
+                    if (!c) return '';
+                    const label = c.label ? `<strong>${c.label}</strong><br/>` : `<strong>Cluster ${c.id}</strong><br/>`;
+                    const drift = c.drift_distance !== null ? `Drift: ${c.drift_distance.toFixed(3)}<br/>` : '';
+                    return `<div style="padding:0.5rem;font-size:0.85rem;">
+                        ${label}
+                        Size: ${c.size}<br/>
+                        Alignment: ${c.alignment.toFixed(2)}<br/>
+                        Velocity: ${c.velocity.toFixed(2)}<br/>
+                        ${drift}
+                        <em style="font-size:0.75rem;color:#888;">Click to view details</em>
+                    </div>`;
+                },
+            },
+            fill: { opacity: 0.75 },
         };
 
-        // Initialize ApexCharts
         if (typeof ApexCharts !== 'undefined') {
             this.chart = new ApexCharts(container, options);
             this.chart.render();
@@ -170,26 +142,18 @@ class ClusterMap extends HTMLElement {
         }
     }
 
-    getVelocityColor(velocity) {
-        // Color gradient: green (high velocity) to red (low velocity)
-        if (velocity >= 0.7) return '#10b981'; // green-500
-        if (velocity >= 0.4) return '#f59e0b'; // amber-500
-        if (velocity >= 0.2) return '#f97316'; // orange-500
-        return '#ef4444'; // red-500
+    velocityColor(velocity) {
+        if (velocity >= 0.7) return '#10b981'; // green
+        if (velocity >= 0.4) return '#f59e0b'; // amber
+        if (velocity >= 0.2) return '#f97316'; // orange
+        return '#ef4444';                       // red
     }
 
     showClusterDetail(clusterId) {
-        // Trigger HTMX request to show cluster detail
-        const event = new CustomEvent('showClusterDetail', {
-            detail: { clusterId, workspaceId: this.workspaceId }
-        });
-        document.body.dispatchEvent(event);
-        
-        // Also try HTMX directly
         if (typeof htmx !== 'undefined') {
             htmx.ajax('GET', `/workspaces/${this.workspaceId}/clusters/${clusterId}/`, {
                 target: '#dialog-body',
-                swap: 'innerHTML'
+                swap: 'innerHTML',
             });
             const dialog = document.getElementById('resource-dialog');
             if (dialog) dialog.show();
@@ -199,7 +163,7 @@ class ClusterMap extends HTMLElement {
     showEmptyState() {
         const container = document.getElementById(`cluster-map-chart-${this.workspaceId}`);
         if (container) {
-            container.innerHTML = '<div style="padding: 2rem; text-align: center; color: var(--sl-color-neutral-500);">No clusters yet. Clusters will appear here as documents are processed.</div>';
+            container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--sl-color-neutral-500);">No clusters yet. Clusters will appear here as documents are processed.</div>';
         }
     }
 
@@ -211,5 +175,4 @@ class ClusterMap extends HTMLElement {
     }
 }
 
-// Register the custom element
 customElements.define('cluster-map', ClusterMap);

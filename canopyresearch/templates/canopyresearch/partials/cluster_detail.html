@@ -1,7 +1,8 @@
-<sl-dialog label="Cluster {{ cluster.id }} Details" id="cluster-detail-dialog" style="--width: 1200px; --max-width: 95vw;">
+<sl-dialog label="{% if cluster.label %}{{ cluster.label }}{% else %}Cluster {{ cluster.id }}{% endif %}" id="cluster-detail-dialog" style="--width: 1200px; --max-width: 95vw;">
     <sl-card>
         <div slot="header">
-            <strong>Cluster {{ cluster.id }}</strong>
+            <strong>{% if cluster.label %}{{ cluster.label }}{% else %}Cluster {{ cluster.id }}{% endif %}</strong>
+            {% if cluster.label %}<span style="font-size: 0.8rem; color: var(--sl-color-neutral-500); font-weight: normal; margin-left: 0.5rem;">Cluster {{ cluster.id }}</span>{% endif %}
         </div>
         <div class="cluster-detail-metrics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
             <div>
@@ -113,7 +114,18 @@
             {% endif %}
         </div>
     </sl-card>
-    <sl-button slot="footer" variant="primary" onclick="this.closest('sl-dialog').hide()">Close</sl-button>
+    <div slot="footer" style="display: flex; justify-content: space-between; align-items: center; width: 100%; gap: 1rem;">
+        <form method="post" action="{% url 'cluster_branch' workspace.id cluster.id %}"
+              style="display: flex; gap: 0.5rem; align-items: center; flex: 1;">
+            {% csrf_token %}
+            <sl-input name="name" placeholder="New workspace name (optional)" size="small" style="flex: 1;"></sl-input>
+            <sl-button type="submit" variant="default" size="small">
+                <sl-icon slot="prefix" name="diagram-3"></sl-icon>
+                Branch to workspace
+            </sl-button>
+        </form>
+        <sl-button variant="primary" onclick="this.closest('sl-dialog').hide()">Close</sl-button>
+    </div>
 </sl-dialog>
 <script>
 (function() {
