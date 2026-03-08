@@ -15,6 +15,11 @@ class Workspace(models.Model):
     description = models.TextField(blank=True)
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="workspaces")
     core_centroid = models.JSONField(default=dict, blank=True)  # Placeholder for future embeddings
+    ingestion_interval_hours = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="How often to auto-ingest (hours). Leave blank to disable scheduled ingestion.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -88,6 +93,7 @@ class Document(models.Model):
     content = models.TextField()
     published_at = models.DateTimeField(null=True, blank=True)
     metadata = models.JSONField(default=dict, blank=True)  # Optional fields like author, tags
+    summary = models.TextField(blank=True, default="")
     embedding = models.JSONField(default=list, blank=True)  # Placeholder for future embeddings
     content_hash = models.CharField(
         max_length=64, db_index=True, blank=True
@@ -188,6 +194,7 @@ class Cluster(models.Model):
     """
 
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="clusters")
+    label = models.CharField(max_length=200, blank=True)  # LLM-generated descriptive label
     centroid = models.JSONField(default=list, blank=True)  # Embedding vector
     size = models.IntegerField(default=0)  # Number of documents in cluster
     alignment = models.FloatField(
@@ -306,3 +313,43 @@ class WorkspaceCoreFeedback(models.Model):
 
     def __str__(self):
         return f"{self.get_vote_display()} on {self.document.title} in {self.workspace.name}"
+
+
+class WorkspaceSearchTerms(models.Model):
+    """
+    Tracks search terms extracted from workspace context.
+
+    Terms are used to discover relevant sources before ingestion.
+    """
+
+    SOURCE_CHOICES = [
+        ("name", "Workspace name"),
+        ("description", "Workspace description"),
+        ("document", "Extracted from document"),
+        ("manual", "Manually added"),
+    ]
+
+    workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE, related_name="search_terms")
+    term = models.CharField(max_length=200, db_index=True)
+    source = models.CharField(max_length=50, choices=SOURCE_CHOICES)
+    weight = models.FloatField(default=1.0)  # Frequency/importance weight
+    document = models.ForeignKey(
+        Document,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Document this term was extracted from (if source='document')",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [["workspace", "term"]]
+        indexes = [
+            models.Index(fields=["workspace", "-weight"]),
+            models.Index(fields=["workspace", "source"]),
+        ]
+        ordering = ["-weight", "term"]
+
+    def __str__(self):
+        return f"{self.term} ({self.get_source_display()}) in {self.workspace.name}"
